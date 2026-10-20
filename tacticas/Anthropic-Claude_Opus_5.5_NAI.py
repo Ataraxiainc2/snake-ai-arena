@@ -4,10 +4,9 @@ N=dict(zip('UP DOWN LEFT RIGHT'.split(),M))
 class A:
  def decide_action(s,p):
   b=p['block_size'];W=p['width'];H=p['height'];B=p['my_body'];h=B[0];v=p['my_score'];w=v<200;E=p['enemies'];F=p['foods']
-  O=set(B[:-1])if v>98 else set()
+  P=O=set(B[:-1])if v>98 else set()
   if v>298:
-   for e in E:
-    O|=set(e['body'][:-1]);i,j=e['head'];O|={(i+u*b,j+t*b)for u,t in M}
+   for e in E:i,j=e['head'];O=O|set(e['body'][:-1])|{(i+u*b,j+t*b)for u,t in M}
   def n(c,d):
    i=c[0]+d[0]*b;j=c[1]+d[1]*b
    return(i%W,j%H)if w else(i,j)if-1<i<W and-1<j<H else h
@@ -27,5 +26,5 @@ class A:
       S.add(k);Q.append(k)
       if len(S)>L or k==B[-1]:return L
    return len(S)
-  return max(p['valid_actions'],key=lambda a:(f(c:=n(h,N[a])),c in F,-D(c,T)))
+  return max(p['valid_actions'],key=lambda a:(f(c:=n(h,N[a])),c not in P,c in F,-D(c,T)))
 def create_agent():return A()

@@ -2,8 +2,7 @@ MODEL_NAME="Sonnet55"
 D={'UP':(0,-1),'DOWN':(0,1),'LEFT':(-1,0),'RIGHT':(1,0)}
 class A:
     def decide_action(s,p):
-        b=p["block_size"];W=p["width"];H=p["height"]
-        if W>300:W//=b;H//=b
+        b=p["block_size"];W=p["width"]//b;H=p["height"]//b
         g=p["my_score"]<200
         B=[(x//b,y//b) for x,y in p["my_body"]]
         L=len(B)
@@ -11,6 +10,9 @@ class A:
         o=set()
         for e in p["enemies"]:
             o|={(x//b,y//b) for x,y in e["body"]}
+            if p["my_score"]>=299:
+                x,y=e["head"];x//=b;y//=b
+                o|={(x+u,y+v) for u,v in D.values()}
         F=[(x//b,y//b) for x,y in p["foods"]] or [B[0]]
         N=L*3+40
         def m(c,a):
@@ -34,7 +36,8 @@ class A:
                 dx=abs(n[0]-f[0]);dy=abs(n[1]-f[1])
                 if g:dx=min(dx,W-dx);dy=min(dy,H-dy)
                 c=min(c,dx+dy)
-            k=-c+(r/99 if r>=L*2+10 else r*50-9999)
+            k=r*9-99999
+            if r>=N or B[-1] in v:k=-c+r/999-(L>3 and r<L)*999
             if k>bs:bs=k;best=a
         return best or p["valid_actions"][0]
 def create_agent():return A()

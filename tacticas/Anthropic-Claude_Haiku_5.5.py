@@ -54,15 +54,16 @@ class Agent:
                     st.append(n)
             return len(seen), False
 
+        # Nearest food by BFS; larger budget so food on the big grid is found.
         first = {head: None}
         q = [head]
         i = 0
-        goal = None
-        while i < len(q) and i < 1500:
+        goal = gc = None
+        while i < len(q) and i < 4000:
             c = q[i]
             i += 1
             if c != head and c in fs:
-                goal = first[c]
+                goal, gc = first[c], c
                 break
             for a, d in D.items():
                 n = nb(c, d)
@@ -70,6 +71,8 @@ class Agent:
                     continue
                 first[n] = first[c] or a
                 q.append(n)
+        # No reachable food: chase the tail (it always moves away) to avoid starving.
+        tgt = gc or tail
 
         cands = []
         for a in va:
@@ -81,10 +84,10 @@ class Agent:
                 continue
             ar, cyc = area(n)
             tier = 2 if cyc else (1 if ar >= need else 0)
-            cands.append((tier, a, dang))
+            cands.append((tier, a, dang, n))
         if not cands:
             return va[0]
-        return max(cands, key=lambda c: (c[1] == goal and c[0] == 2, c[0], -c[2]))[1]
+        return max(cands, key=lambda c: (c[1] == goal and c[0] == 2, c[0], -c[2], -dist(c[3], tgt)))[1]
 
 
 def create_agent():
