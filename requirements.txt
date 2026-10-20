@@ -1,0 +1,4 @@
+pygame>=2.5
+torch>=2.2
+optuna>=3.0
+colorama>=0.4

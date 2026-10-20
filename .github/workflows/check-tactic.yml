@@ -1,0 +1,56 @@
+name: Check tactic
+
+on:
+  pull_request:
+  push:
+    paths: ["tacticas/**", "SNAKES.py", "tools/check_tactic.py"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Files to check
+        id: files
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          THIS_REPO: ${{ github.repository }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then echo "list=" >> "$GITHUB_OUTPUT"; exit 0; fi
+          changed=$(git diff --name-only --diff-filter=AMR "origin/$BASE...HEAD")
+          printf 'Changed files:\n%s\n' "$changed"
+          if [ "$HEAD_REPO" != "$THIS_REPO" ]; then
+            bad=$(printf '%s\n' "$changed" | grep -v -E '^tacticas/[A-Za-z0-9._-]+\.py$' || true)
+            if [ -n "$bad" ]; then
+              echo "::error::A submission may only add or change one tacticas/Provider-Model_Name.py file (letters, digits, . _ - only)."
+              exit 1
+            fi
+          fi
+          list=$(printf '%s\n' "$changed" | grep -E '^tacticas/[A-Za-z0-9._-]+\.py$' | tr '\n' ' ' || true)
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+      - name: Install torch (only if a checked tactic imports it)
+        shell: bash
+        env:
+          FILES: ${{ steps.files.outputs.list }}
+        run: |
+          files=${FILES:-$(ls tacticas/*.py | tr '\n' ' ')}
+          if grep -l -E '^\s*(import|from)\s+torch' $files >/dev/null 2>&1; then
+            pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+          fi
+      - name: Anti-cheat audit and timing battery
+        shell: bash
+        env:
+          FILES: ${{ steps.files.outputs.list }}
+        run: python -I tools/check_tactic.py $FILES

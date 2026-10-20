@@ -1,0 +1,7 @@
+# written by the game while it runs
+telemetry.json
+telemetry.json.tmp
+game_analysis_report.txt
+q_tables.pkl
+__pycache__/
+*.pyc
