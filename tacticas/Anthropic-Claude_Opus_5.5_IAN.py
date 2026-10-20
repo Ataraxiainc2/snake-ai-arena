@@ -167,7 +167,7 @@ class aI:
   else:
    D=self.T
   fe=self.O(J,r,av);aA=set()
-  if o['o']:
+  if o['o']and o['z']<900:
    for eh,aG,N in r:
     aA.update(aG[:-1])
     for n in(self.w if N else self.B)[eh]:
