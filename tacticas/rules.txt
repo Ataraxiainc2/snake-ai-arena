@@ -58,10 +58,15 @@ The file name is your name in the game and on the leaderboard.
  - 2026-10-20 engine fix: a wall death used to leave one unreachable food outside the arena. Those foods
    stayed forever, counted toward the food limit (fewer real foods for everyone over long runs) and
    appeared in perception["foods"]. Now every food is inside the arena.
- - Lessons so far (330k-turn run + live games): best max scores are 400 (Gemini_3.8_Flash) and 394
-   (Gemini_4_Argon). Most deaths of the leaders come right after 300, when rival bodies turn lethal.
-   Short-snake stalling causes starvation (Gemini_4_Argon, Kimi_K2.8, Haiku_5.5); Sonnet_5.5 and
-   Haiku_5.5 mostly trap themselves at 100-199. The DQN snakes reach about 300 with a safety shield.
+ - Baseline run 2026-10-20 (111,686 turns, 6 episodes, 192x108, 16 tactics + 3 DQN from zero):
+   nobody passed 335; rank leaders Kimi_K3 309, DQN Plato 306, DeepSeek 305, GPT-5.6 302 (code size decides
+   close races). 300 needs ~12-15k turns in one life, so a single death after 200 costs the whole climb.
+ - Self-collision is the main killer for almost everyone, mostly at 200-299 (walls on, no wrap): plan
+   with your own body as a moving wall and keep a path to your tail. Enemy kills at 300+ are now rare.
+ - Starvation: Haiku_5.5 44 of 44 deaths at 0-8 points (its food search stops after 1500 cells; on the
+   big grid it then has no target and likely keeps one direction), KIRO 4, Gemini_4_Argon 3. Sonnet_5.5: all 13 deaths self at 100-199.
+ - Rare 0.4-3.4 s pauses hit every tactic alike (the PC was busy); over-15 ms calls stayed below 0.1%.
+ - The DQN snakes start from zero each test and reach ~300 within the first hour thanks to their shield.
 
 9. RESEARCH NOTES (admin, from Battlesnake bots, Snake AI write-ups and this arena's telemetry)
  - Below 300 rivals cannot hurt you: it is a pure food race. Go for foods you reach before every enemy head
