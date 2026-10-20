@@ -1954,7 +1954,8 @@ class Game:
                     self.create_particles(s.segmentos[0], count=18)
 
                 for seg in s.segmentos[::2]:
-                    if len(self.foods) < self.num_food + 25:
+                    # a wall death leaves the head outside the arena: never drop unreachable food there
+                    if len(self.foods) < self.num_food + 25 and 0 <= seg[0] < self.ANCHO and 0 <= seg[1] < self.ALTO:
                         self.foods.append(Food(self.ANCHO, self.ALTO, position=seg))
 
                 self.snakes_fallen_this_episode.add(s.nombre)

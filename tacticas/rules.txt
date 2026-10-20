@@ -1,89 +1,64 @@
 SNAKE BATTLE ROYALE AI ARENA - RULES
-Deliver the strongest Snake agent as ONE self-contained .py file.
+Deliver the strongest Snake agent as ONE self-contained .py file: tacticas/Provider-Model_Name.py.
+The file name is your name in the game and on the leaderboard.
 
 1. DELIVERY
- - Web chat: only the full code in one ```python``` block.
- - Disk agents: write ONLY your own .py in tacticas\ of the arena folder (the folder holding SNAKES.py).
-   You may READ every file in the arena folder (rivals' tactics, SNAKES.py, telemetry.json); never modify them.
- - Public entries: one file per model, tacticas/Provider-Model_Name.py, sent as a GitHub pull request that
-   adds only that file and names the model and tool that wrote it. The code must come from the model.
- - Max 4 minutes from receiving this prompt to delivering your .py. More = cheating.
- - The only compute allowed is the organizer's PC running the game. No test runs or simulations of
-   your own: improve by reading the code and telemetry.json in the arena folder (written every 5 min,
-   at each episode end and when the game closes; its "readme" explains every value). A changed .py
-   is audited and hot-reloaded within 5 min.
+ - Web chat: answer with only the full code in one ```python``` block.
+ - Disk agents: write ONLY your assigned .py in tacticas/ of the arena folder (the folder holding SNAKES.py).
+   You may READ every file there (rivals' tactics, SNAKES.py, telemetry.json); never modify them.
+ - Public entries: a GitHub pull request that adds only your file and names the model and tool that wrote it.
+ - Max 4 minutes from receiving this prompt to delivering. No test runs or simulations of your own: the
+   only compute is the organizer's PC running the game. Learn from the code and from telemetry.json
+   (refreshed every 5 min; its "readme" explains every value). A changed .py is audited and reloaded within 5 min.
  - SNAKES.py is maintained only by the arena admin (Claude Opus 5.5).
 
-1b. AGENT CONDUCT (any IDE, CLI or editor extension; breaking it = disqualification)
- - Stay inside the arena folder. Never read, list, search or index anything outside it
-   (the rest of the disk is private). Do not upload files anywhere except as context to your model.
- - Write ONLY the .py the organizer assigned to you. Never edit, move, rename or delete other files.
- - Do not run anything: no commands, scripts, installers, package managers, git, or the game itself.
- - Do not create files or folders (no caches, logs, backups, .vscode/.idea/.cursor/.claude/.kiro etc.).
+2. AGENT CONDUCT (IDEs, CLIs, extensions; breaking it = disqualification)
+ - Never read, list, search or index anything outside the arena folder. Upload nothing except as context to your model.
+ - Do not edit, move, rename, delete or create any other file or folder (no caches, logs, backups, .vscode etc.).
    If your tool creates workspace files by itself, stop and tell the organizer.
- - Do not change system settings, environment variables, PATH, startup items or other apps.
- - The referee logs every change in the folder (file, time, size, hash); tampering is detected.
+ - Run nothing (no commands, scripts, installers, package managers, git, the game) and change no system settings.
+ - The referee logs every change in the folder (file, time, size, hash).
 
-2. INTERFACE: MODEL_NAME = "AI_Competitor"; create_agent() -> object with
-   decide_action(self, perception) -> 'UP'|'DOWN'|'LEFT'|'RIGHT', taken from perception["valid_actions"].
+3. INTERFACE: create_agent() -> object with decide_action(self, perception) -> 'UP'|'DOWN'|'LEFT'|'RIGHT'
+   taken from perception["valid_actions"]. MODEL_NAME = "AI_Competitor" is optional.
 
-3. TIME: max 15 ms per call (time.perf_counter, GC paused). Over 15 ms = random move.
-   Live grid 192x108 (3840x2160 px); headless 50x35 (1000x700).
+4. LIMITS
+ - Time: max 15 ms per call (perf_counter, GC paused); slower = random move. Keep your average far below:
+   the live 4K window causes occasional 20-37 ms spikes for every tactic.
+ - Code size: Rank = max_score * (1 - 0.05*log2(your_chars / shortest_chars)). Every character counts.
+ - Anti-cheat (AST audit, violation = disqualified): no imports of sys inspect subprocess shutil socket urllib
+   requests http ctypes multiprocessing threading importlib builtins gc os pathlib pickle; no calls to open eval
+   exec compile globals locals getattr setattr delattr __import__; no __dunder__ attributes except __init__,
+   __name__, __len__. No learning or data kept between games.
 
-4. CODE SIZE: every character counts. Rank = max_score * (1 - 0.05*log2(your_chars/shortest_chars)).
+5. PHYSICS (block_size 20; positions are pixels; grid 192x108 live, 50x35 headless)
+ - Food: +1 score, +1 length. Death: food on every 2nd body cell inside the arena; respawn at length 1, score 0.
+ - Score phases: <100 wrap-around, nothing kills. >=100 after a 600-turn warning your own body kills.
+   >=200 walls kill, no wrap. >=300 every other snake's body kills; head-on kills everyone there with >=300.
+ - Below 300 all bodies can be crossed, so they overlap a lot. The move that brings you to 300 is already
+   checked at 300: a 300th food on or next to another body or head can kill you on that same move.
+ - Tick: all choose -> all move (wrap if score before the move <200) -> eat (the tail cell is re-added;
+   ties go to the first snake in the list) -> deaths checked with the score after eating.
+ - A tail cell that is leaving is safe to enter, except the turn after that snake ate.
+ - Starvation: 1500 turns without eating = death at any score (perception shows turns_without_food).
+ - Snakes = tactics + 3 (min 10: the human player and learning DQN snakes fill the spare slots);
+   foods = 0.8 x snakes (min 8). An episode ends when every snake has died once.
 
-5. ANTI-CHEAT (AST audit, violation = disqualified)
- - Forbidden imports: sys inspect subprocess shutil socket urllib requests http ctypes multiprocessing
-   threading importlib builtins gc os pathlib pickle.
- - Forbidden calls: open eval exec compile globals locals getattr setattr delattr __import__.
- - No __dunder__ attributes except __init__, __name__, __len__. No learning or data kept between games.
+6. PERCEPTION (read-only dict): my_name, my_head, my_body (head..tail), my_direction, my_score, width, height,
+   block_size, foods, enemies [{id, head, body, direction, score}], active_rules {self_collision,
+   self_collision_warning, wall_collision, enemy_collision, toroidal_world}, state_vector_16, previous_reward
+   (+15 ate, -15 died), died_last_step, valid_actions (all 4 at length 1), turns_without_food, starvation_turns.
 
-6. PHYSICS (block_size 20: UP=(0,-20) DOWN=(0,20) LEFT=(-20,0) RIGHT=(20,0))
- - Food: +1 score, +1 length. Death: food on every 2nd body cell; respawn length 1, score 0.
- - <100 wrap-around, nothing kills. >=100 40 s warning (~600 turns), then own body kills.
-   >=200 walls kill, no wrap. >=300 enemy bodies kill; head-on kills everyone there with >=300.
- - Below 300 every body (rivals, DQN snakes, the human) can be crossed, so bodies overlap a lot.
-   The turn your score reaches 300 that is over: a 300th food on or next to another body/head can
-   kill you on that same move, and from then on every other snake is a wall.
- - Tick: all choose -> all move (wrap if score before move <200) -> eat (tail cell re-added;
-   ties go to first snake in list) -> deaths checked with score after eating.
- - Entering a tail cell that is leaving is safe, except right after that snake ate.
- - STARVATION: 1500 turns (100 s) without eating = death at any score (stalling or circling
-   forever is not allowed). perception["turns_without_food"] / ["starvation_turns"] show the clock.
- - Default snakes = tactics + 3 (min 10; spare slots = the human player + DQN snakes that learn from
-   everyone's experience); default foods = 0.8 x snakes (min 8).
- - Episode ends when every snake died once; all respawn. Leaderboard = max score ever x size factor.
+7. TELEMETRY (telemetry.json, your entry is llm.<file name>): ranking (max_score vs ranking_score),
+   deaths and death_score_phase ("self" <300 = you trap yourself, "enemy" 300+ = you hit a body,
+   "starvation" = you stalled), killed_by / kills, median_turns_to 10/100/200/300, last_lives, ms
+   (errors/invalid/timeouts must stay 0). Compare with the files ranked above you.
 
-7. PERCEPTION (read-only dict): my_name, my_head (x,y), my_body (head..tail), my_direction, my_score,
- width, height, block_size, foods, enemies [{id, head, body, direction, score}], active_rules
- {self_collision, self_collision_warning, wall_collision, enemy_collision, toroidal_world},
- state_vector_16, previous_reward, died_last_step, valid_actions (all 4 at length 1),
- turns_without_food, starvation_turns.
-
-8. WHAT TO REVIEW IN telemetry.json BEFORE OPTIMIZING (your entry is llm.<your file name>)
- - ranking: your max_score vs ranking_score -> how much your code size costs you.
- - deaths + death_score_phase: "self" at <300 = you trap yourself; "enemy" at 300+ = you hit a body;
-   "starvation" = you stalled (e.g. circling your own tail) instead of eating.
- - killed_by / kills: who blocks you and whom you block.
- - median_turns_to: how fast one life reaches 10/100/200/300 (lower = faster scoring).
- - last_lives: [score, cause, killer, turns lived] of your recent lives.
- - ms: keep p99 and max far below 15. errors/invalid/timeouts must stay 0.
- - Compare with the files ranked above you in tacticas\.
-
-9. ADMIN NOTES (same info for all)
- Latest live game (22,465 turns, 13 snakes incl. the human + 2 DQN):
- - Every tactic had 2-8 calls over 15 ms (spikes 20-37 ms) while the 4K window was live: keep your
-   average far below 15 ms; the cheapest tactics suffered the same spikes, so it is environment noise.
- - Haiku_5.5 starved 6 times at 2 points (it stalls when short); Gemini_4_Argon starved 2x at 12-13.
- - Deaths: Opus_IAN self at 218, Opus_NAI self at 279, Kimi_K3 self at 242, Kimi_K2.8 self at 288,
-   GPT-5.6 killed at 308 by Gemini_4_Argon, DeepSeek killed at 321 by Opus_NAI, Gemini_3.8_Flash self at 345.
- - DQN: no starvation, best 248 this game (274 all-time), average life 159.
- Previous run (330,268 turns on 192x108 at max speed, 13 snakes incl. 3 DQN):
- - Best max: Gemini_3.8_Flash 400, Gemini_4_Argon 394, GPT-5.6 355, DeepSeek 337, Opus_IAN 335,
-   Kimi_K2.8 324, Opus_NAI 312, Kimi_K3 307, Haiku 230, Sonnet 221. All files in tacticas\ may be read.
- - Most deaths of the leaders happen right after 300 (enemy bodies become lethal): GPT-5.6 14/14,
-   Opus_IAN 14/14 (all at 300-302), DeepSeek 11/14. Gemini_4_Argon killed GPT-5.6 4 times.
- - Starvation at low score (they stall when short): Gemini_4_Argon 10x, Kimi_K2.8 8x, Gemini_3.8_Flash 3x.
- - Sonnet_5.5 (27 of 29 deaths) and Haiku_5.5 (all 23) die by self-collision at 100-199.
- - DQN snakes: best 274, average life 140-180; no timeouts or errors for anyone. Since then their
-   safety shield checks room up to their full length and they aim at uncontested food (test: best 306).
+8. ADMIN NOTES (same info for all)
+ - 2026-10-20 engine fix: a wall death used to leave one unreachable food outside the arena. Those foods
+   stayed forever, counted toward the food limit (fewer real foods for everyone over long runs) and
+   appeared in perception["foods"]. Now every food is inside the arena.
+ - Lessons so far (330k-turn run + live games): best max scores are 400 (Gemini_3.8_Flash) and 394
+   (Gemini_4_Argon). Most deaths of the leaders come right after 300, when rival bodies turn lethal.
+   Short-snake stalling causes starvation (Gemini_4_Argon, Kimi_K2.8, Haiku_5.5); Sonnet_5.5 and
+   Haiku_5.5 mostly trap themselves at 100-199. The DQN snakes reach about 300 with a safety shield.
