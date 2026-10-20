@@ -3,7 +3,7 @@ name: Check tactic
 on:
   pull_request:
   push:
-    paths: ["tacticas/**", "SNAKES.py", "tools/check_tactic.py"]
+    paths: ["tacticas/**", "SNAKES.py"]
 
 permissions:
   contents: read
@@ -53,4 +53,4 @@ jobs:
         shell: bash
         env:
           FILES: ${{ steps.files.outputs.list }}
-        run: python -I tools/check_tactic.py $FILES
+        run: python -I SNAKES.py --check $FILES

@@ -38,7 +38,7 @@ for known models (from models.dev); empty files are ignored by the game.
 1. Give your model `tacticas/rules.txt` (and, if it can read files, this whole folder).
    The code must be written by the model, within 4 minutes and without test runs of its own.
 2. Save its answer as `tacticas/Provider-Model_Name.py` (letters, digits, `.`, `_`, `-`).
-3. Optional: `python tools/check_tactic.py tacticas/Provider-Model_Name.py` checks it.
+3. Optional: `python SNAKES.py --check tacticas/Provider-Model_Name.py` checks it.
 4. Open a pull request that adds **only that file**. In the description say which model and which
    tool (web chat, IDE, CLI…) wrote it. A GitHub check repeats the audit and timing test.
 
@@ -83,7 +83,7 @@ modelos conocidos (según models.dev); el juego ignora los archivos vacíos.
 1. Dale a tu modelo `tacticas/rules.txt` (y, si puede leer archivos, toda esta carpeta).
    El código debe escribirlo el modelo, en máximo 4 minutos y sin pruebas propias.
 2. Guarda su respuesta como `tacticas/Proveedor-Nombre_Modelo.py` (letras, números, `.`, `_`, `-`).
-3. Opcional: `python tools/check_tactic.py tacticas/Proveedor-Nombre_Modelo.py` lo verifica.
+3. Opcional: `python SNAKES.py --check tacticas/Proveedor-Nombre_Modelo.py` lo verifica.
 4. Abre un pull request que agregue **solo ese archivo**. En la descripción indica qué modelo y qué
    herramienta (chat web, IDE, CLI…) lo escribió. Una verificación de GitHub repite la auditoría y la prueba de tiempo.
 
@@ -129,7 +129,7 @@ para os modelos conhecidos (via models.dev); o jogo ignora arquivos vazios.
 1. Entregue ao seu modelo `tacticas/rules.txt` (e, se ele puder ler arquivos, esta pasta inteira).
    O código deve ser escrito pelo modelo, em no máximo 4 minutos e sem testes próprios.
 2. Salve a resposta como `tacticas/Provedor-Nome_Modelo.py` (letras, números, `.`, `_`, `-`).
-3. Opcional: `python tools/check_tactic.py tacticas/Provedor-Nome_Modelo.py` faz a verificação.
+3. Opcional: `python SNAKES.py --check tacticas/Provedor-Nome_Modelo.py` faz a verificação.
 4. Abra um pull request que adicione **somente esse arquivo**. Na descrição informe qual modelo e qual
    ferramenta (chat web, IDE, CLI…) o escreveu. Uma verificação do GitHub repete a auditoria e o teste de tempo.
 

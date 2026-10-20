@@ -32,6 +32,118 @@ import importlib.util
 import shutil
 from collections import defaultdict, deque
 
+
+def check_tactics(paths):
+    """`python SNAKES.py --check [tacticas/X.py ...]`: the same AST audit the game applies, then 216 random
+    positions (both grid sizes, every rule phase) counting errors, invalid moves and time. Runs before
+    pygame/torch are imported, so it also works on a bare Python (e.g. the GitHub pull-request check).
+    The audit is a filter, not a sandbox: only run strangers' files after this check, ideally on GitHub."""
+    root = os.path.dirname(os.path.abspath(__file__))
+    lists = {}
+    for node in ast.parse(open(os.path.abspath(__file__), encoding="utf-8").read()).body:
+        if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") in ("FORBIDDEN_MODULES", "FORBIDDEN_CALLS"):
+            lists[node.targets[0].id] = ast.literal_eval(node.value)
+    mods, calls = lists["FORBIDDEN_MODULES"], lists["FORBIDDEN_CALLS"]
+    dirs = {'UP': (0, -1), 'DOWN': (0, 1), 'LEFT': (-1, 0), 'RIGHT': (1, 0)}
+
+    def audit(src):
+        for n in ast.walk(ast.parse(src)):
+            if isinstance(n, ast.Import) and any(a.name.split('.')[0] in mods for a in n.names):
+                return "forbidden import"
+            if isinstance(n, ast.ImportFrom) and n.module and n.module.split('.')[0] in mods:
+                return f"forbidden import from '{n.module}'"
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in calls:
+                return f"forbidden call '{n.func.id}()'"
+            if isinstance(n, ast.Attribute) and n.attr.startswith('__') and n.attr not in {'__init__', '__name__', '__len__'}:
+                return f"restricted dunder '{n.attr}'"
+        return None
+
+    def walk(w, h, length, wrap, rnd):
+        x, y = rnd.randrange(w), rnd.randrange(h)
+        body = [(x, y)]
+        for _ in range(length - 1):
+            dx, dy = rnd.choice(list(dirs.values()))
+            x, y = body[-1][0] + dx, body[-1][1] + dy
+            body.append((x % w, y % h) if wrap else (min(max(x, 0), w - 1), min(max(y, 0), h - 1)))
+            x, y = body[-1]
+        return body
+
+    def perception(w, h, score, rnd, bs=20):
+        px = lambda c: (c[0] * bs, c[1] * bs)
+        me = [px(c) for c in walk(w, h, min(score + 1, 900), score < 200, rnd)]
+        enemies = []
+        for i in range(14):
+            s = rnd.choice([0, 5, 50, 150, 250, 310, 400])
+            eb = [px(c) for c in walk(w, h, min(s + 1, 900), s < 200, rnd)]
+            enemies.append({'id': i, 'head': eb[0], 'body': tuple(eb), 'direction': rnd.choice(list(dirs)), 'score': float(s)})
+        return {'my_name': 'Candidate', 'my_head': me[0], 'my_body': tuple(me), 'my_direction': rnd.choice(list(dirs)),
+                'my_score': float(score), 'width': w * bs, 'height': h * bs, 'block_size': bs,
+                'foods': tuple(px((rnd.randrange(w), rnd.randrange(h))) for _ in range(12)), 'enemies': tuple(enemies),
+                'active_rules': {'self_collision': score >= 100, 'self_collision_warning': 100 <= score < 110,
+                                 'wall_collision': score >= 200, 'enemy_collision': score >= 300, 'toroidal_world': score < 200},
+                'state_vector_16': (0.0,) * 16, 'previous_reward': rnd.choice([0.0, 15.0, -1.2]), 'died_last_step': False,
+                'valid_actions': tuple(dirs) if score == 0 else tuple(rnd.sample(list(dirs), 3)),
+                'turns_without_food': rnd.choice([0, 500, 1200]), 'starvation_turns': 1500}
+
+    def check(path):
+        rel = os.path.relpath(os.path.abspath(path), root).replace(os.sep, "/")
+        if not (rel.startswith("tacticas/") and rel.endswith(".py") and rel.count("/") == 1):
+            return False, f"{rel}: entries must be a single tacticas/<Provider-Model_Name>.py file"
+        src = open(path, encoding="utf-8").read()
+        if not src.strip():
+            return False, f"{rel}: empty file"
+        reason = audit(src)
+        if reason:
+            return False, f"{rel}: DISQUALIFIED by the anti-cheat audit ({reason})"
+        try:
+            spec = importlib.util.spec_from_file_location("candidate", path)
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            decide = (mod.create_agent() if hasattr(mod, "create_agent") else mod).decide_action
+        except Exception as e:
+            return False, f"{rel}: cannot be loaded ({e!r})"
+        rnd = random.Random(7)
+        errors = invalid = 0
+        times, first = [], ""
+        for w, h in ((192, 108), (50, 35)):
+            for score in (0, 20, 99, 120, 199, 210, 299, 305, 420):
+                for _ in range(12):
+                    p = perception(w, h, score, rnd)
+                    gc.disable()
+                    t = time.perf_counter()
+                    try:
+                        a = decide(p)
+                    except Exception as e:
+                        a, errors, first = None, errors + 1, first or repr(e)
+                    times.append((time.perf_counter() - t) * 1000)
+                    gc.enable()
+                    invalid += a not in p['valid_actions']
+        times.sort()
+        p50, p99 = times[len(times) // 2], times[int(len(times) * 0.99)]
+        line = (f"{rel}: {len(src)} chars, errors={errors}, invalid={invalid}, "
+                f"median={p50:.2f} ms, p99={p99:.2f} ms, max={times[-1]:.2f} ms")
+        if errors or invalid:
+            return False, line + f"  FAIL {first}"
+        if p50 > 15.0:
+            return False, line + "  FAIL median above 15 ms"
+        return True, line + ("  WARNING: p99 above 15 ms (slow turns become random moves)" if p99 > 15.0 else "")
+
+    folder = os.path.join(root, "tacticas")
+    files = paths or sorted(os.path.join(folder, f) for f in os.listdir(folder)
+                            if f.endswith(".py") and os.path.getsize(os.path.join(folder, f)) > 0)
+    ok = True
+    for f in files:
+        good, line = check(f)
+        ok &= good
+        print(("PASS " if good else "FAIL ") + line, flush=True)
+    return 0 if ok else 1
+
+
+if __name__ == "__main__" and "--check" in sys.argv:
+    sys.dont_write_bytecode = True
+    sys.exit(check_tactics([a for a in sys.argv[1:] if a != "--check"]))
+
+
 import pygame
 import torch
 import torch.nn as nn
