@@ -15,6 +15,7 @@ Single-file unified engine containing:
 import os
 import sys
 import ast
+import array
 import gc
 import re
 import json
@@ -1343,6 +1344,20 @@ class GameAnalytics:
 # ==============================================================================
 # SECTION 7: MAIN PYGAME ENGINE, CONVERGENCE GRAPH & TURBO TRAINING MODE
 # ==============================================================================
+def make_tone(freq, ms, volume=0.2):
+    """Minimal synthesized beep (no sound files): a short decaying square wave, built once at start-up."""
+    rate, size, channels = pygame.mixer.get_init()
+    if size != -16:
+        return None
+    n = int(rate * ms / 1000)
+    half = max(1, int(rate / freq) // 2)
+    amp = 32767 * volume
+    wave = array.array("h", (int(amp * (1 - i / n)) * (1 - 2 * ((i // half) & 1)) for i in range(n)))
+    if channels > 1:
+        wave = array.array("h", (s for s in wave for _ in range(channels)))
+    return pygame.mixer.Sound(buffer=wave.tobytes())
+
+
 class Game:
     def __init__(self, num_snakes, num_food, play_as_user, fps=FPS, headless=False, dqn_mode=DEFAULT_DQN_MODE,
                  arena_size=None, sync_catalog=True, round_info=None):
@@ -1422,9 +1437,9 @@ class Game:
         self.collision_sound = None
         if not headless:
             try:
-                pygame.mixer.init()
-                self.eat_sound = pygame.mixer.Sound("eat.wav")
-                self.collision_sound = pygame.mixer.Sound("collision.wav")
+                pygame.mixer.init(frequency=22050, size=-16, channels=1)
+                self.eat_sound = make_tone(880, 40)
+                self.collision_sound = make_tone(140, 120)
             except Exception:
                 pass
 
