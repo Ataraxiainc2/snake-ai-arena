@@ -9,39 +9,31 @@ class Agent:
         W = p['width'] // b
         H = p['height'] // b
         wrap = not p['active_rules']['wall_collision']
-        body = [(q[0] // b, q[1] // b) for q in p['my_body']]
-        head = body[0]
-        tail = body[-1]
-        L = len(body)
-        fs = set((f[0] // b, f[1] // b) for f in p['foods'])
         sc = p['my_score']
+        body = [(q[0] // b, q[1] // b) for q in p['my_body']]
+        head, tail, need = body[0], body[-1], len(body) + 8
+        fs = [(f[0] // b, f[1] // b) for f in p['foods']]
         B = set(body[:-1]) if sc > 98 else set()
         eh = []
         for e in p['enemies']:
-            eb = [(q[0] // b, q[1] // b) for q in e['body']]
             if sc >= 298:
-                B.update(eb[:-1])
+                B.update((q[0] // b, q[1] // b) for q in e['body'][:-1])
             eh.append((e['head'][0] // b, e['head'][1] // b))
-        need = 2 * L
 
         def nb(c, d):
-            x = c[0] + d[0]
-            y = c[1] + d[1]
+            x, y = c[0] + d[0], c[1] + d[1]
             if wrap:
                 return (x % W, y % H)
             return (x, y) if 0 <= x < W and 0 <= y < H else None
 
         def dist(a, c):
-            dx = abs(a[0] - c[0])
-            dy = abs(a[1] - c[1])
+            dx, dy = abs(a[0] - c[0]), abs(a[1] - c[1])
             if wrap:
-                dx = min(dx, W - dx)
-                dy = min(dy, H - dy)
+                dx, dy = min(dx, W - dx), min(dy, H - dy)
             return dx + dy
 
         def area(s):
-            seen = {s}
-            st = [s]
+            seen, st = {s}, [s]
             while st and len(seen) < need:
                 c = st.pop()
                 for d in D.values():
@@ -54,16 +46,17 @@ class Agent:
                     st.append(n)
             return len(seen), False
 
-        # Nearest food by BFS; larger budget so food on the big grid is found.
+        # Food race: aim for foods I reach before every enemy head; BFS (no tight cap) to the nearest one.
+        G = {f for f in fs if dist(head, f) <= min([dist(h, f) for h in eh] or [dist(head, f)])} or set(fs)
         first = {head: None}
         q = [head]
+        goal = None
         i = 0
-        goal = gc = None
-        while i < len(q) and i < 4000:
+        while i < len(q) and i < 12000:
             c = q[i]
             i += 1
-            if c != head and c in fs:
-                goal, gc = first[c], c
+            if c in G:
+                goal = first[c]
                 break
             for a, d in D.items():
                 n = nb(c, d)
@@ -71,23 +64,17 @@ class Agent:
                     continue
                 first[n] = first[c] or a
                 q.append(n)
-        # No reachable food: chase the tail (it always moves away) to avoid starving.
-        tgt = gc or tail
-
+        tgt = min(fs, key=lambda f: dist(head, f)) if fs else tail
         cands = []
         for a in va:
             n = nb(head, D[a])
             if n is None or n in B:
                 continue
-            dang = sum(1 for h in eh if dist(n, h) <= 1)
-            if sc >= 298 and dang:
-                continue
+            dang = sum(dist(n, h) <= 1 for h in eh) if sc >= 298 else 0
             ar, cyc = area(n)
             tier = 2 if cyc else (1 if ar >= need else 0)
-            cands.append((tier, a, dang, n))
-        if not cands:
-            return va[0]
-        return max(cands, key=lambda c: (c[1] == goal and c[0] == 2, c[0], -c[2], -dist(c[3], tgt)))[1]
+            cands.append((tier > 0 and a == goal, tier, -dang, -dist(n, tgt), a))
+        return max(cands)[4] if cands else va[0]
 
 
 def create_agent():

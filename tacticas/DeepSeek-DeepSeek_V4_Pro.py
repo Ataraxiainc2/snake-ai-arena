@@ -17,7 +17,7 @@ def _f(st,bk,W,H,t,cp,t0):
    if not se[ni]and not bk[ni]:
     se[ni]=1;q.append(ni)
     if len(q)>=cp:break
- return len(q)
+ return len(q),se
 class SnakeAgent:
  def decide_action(s,p):
   try:a=s._d(p)
@@ -89,8 +89,8 @@ class SnakeAgent:
    for i in nb[1:]:b2[i]=1
    if not ea:b2[nb[-1]]=0
    b2[ni]=0
-   sp=_f(ni,b2,W,H,tr,cp,t0)
-   if co and sp<2*nl and sp<cp:
+   sp,se=_f(ni,b2,W,H,tr,cp,t0)
+   if co and sp<cp and sp<2*nl and not(sl and se[nb[-1]]):
     if sp>us:us=sp;uk=(sp,a)
     continue
    eh=min((abs(ni%W-e%W)+abs(ni//W-e//W)for e in ehs),default=I)if el else I
