@@ -15,6 +15,11 @@ import java.util.Locale
  * tactic files plus copies of the reference ports for the rest (or DQN snakes with --dqn N). It plays --warmup
  * turns (the JIT compiles, the snakes grow) and then times --ticks turns: the whole tick, the decide() phase (all
  * tactics) and the engine around it, plus each tactic's average call.
+ *
+ * --digest N prints, every N turns, a CRC of the whole game state (every snake's score, life and cells, and the
+ * foods). With --no-time-limit (no move turned random by a slow call) a game depends only on its seed and its tactic
+ * files, so the same command on the PC and on the phone (dalvikvm64, see README) must print the same lines: the proof
+ * that a tactic plays the same game in both places.
  */
 object Bench {
     fun run(o: Options, root: File): Int {
@@ -65,9 +70,11 @@ object Bench {
         var wSum = 0L
         var wMax = 0L
         var wCpu = cpuNanos()
+        val digestEvery = o.int("digest", 0)
         repeat(ticks) {
             pace.await()
             arena.tick()
+            if (digestEvery > 0 && arena.frame % digestEvery == 0L) println("digest turn ${arena.frame} ${digest(arena)}")
             total += arena.lastTickNanos
             decide += arena.lastDecideNanos
             maxTick = maxOf(maxTick, arena.lastTickNanos)
@@ -101,6 +108,25 @@ object Bench {
         }
         arena.close()
         return 0
+    }
+
+    /** CRC32 of the game state: per snake its id, life, score and cells (head first), then the foods; and the best score. */
+    fun digest(a: Arena): String {
+        val crc = java.util.zip.CRC32()
+        val buf = java.nio.ByteBuffer.allocate(4)
+        fun put(v: Int) {
+            buf.clear()
+            crc.update(buf.putInt(v).array())
+        }
+        for (s in a.snakes) {
+            put(s.id)
+            put(if (s.alive) 1 else 0)
+            put(s.score)
+            put(s.body.size)
+            for (k in 0 until s.body.size) put(s.body[k])
+        }
+        for (f in a.foodList()) put(f)
+        return String.format(Locale.ROOT, "crc %08x best %d", crc.value, a.snakes.maxOf { it.bestScore })
     }
 
     /** CPU time of this process (all threads) from /proc/self/stat, in ns; -1 where there is no /proc. */

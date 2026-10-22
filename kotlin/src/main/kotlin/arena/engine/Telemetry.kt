@@ -1,9 +1,5 @@
-package arena
+package arena.engine
 
-import arena.engine.Arena
-import arena.engine.Brain
-import arena.engine.Kind
-import arena.engine.Snake
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter

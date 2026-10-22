@@ -19,7 +19,7 @@ come with the wrapper. The entries live in `kotlin/tactics/`
 
 | Command | What it does |
 |---|---|
-| `run [--hours H] [--fps 0] [--cells 192x108] [--snakes N] [--refs] ...` | `SNAKES.py --unattended` for `.kt` tactics: rounds, learning DQN snakes in the spare slots, `kotlin/telemetry_kotlin.json` and `kotlin/q_tables_kotlin.bin` every `--save-minutes` (5), changed files reloaded, and a new game when a new file is ready (best scores carry over) |
+| `run [--hours H] [--fps 0] [--cells 195x90] [--snakes N] [--refs] ...` | `SNAKES.py --unattended` for `.kt` tactics: rounds, learning DQN snakes in the spare slots, `kotlin/telemetry_kotlin.json` and `kotlin/q_tables_kotlin.bin` every `--save-minutes` (5), changed files reloaded, and a new game when a new file is ready (best scores carry over) |
 | `view [--human] [--refs] [--fps 15]` | live window (Swing); arrows steer your snake, `+`/`-` speed, `P` pause, `Esc` quit |
 | `check [kotlin/tactics/X.kt ...]` | audit + compile + the timing battery of `SNAKES.py --check` + a 400-snake crowd test |
 | `bench [--snakes 400] [--cells 390x180] [--threads T] [--dqn N]` | times a real game: engine, decide phase, per tactic |
@@ -197,6 +197,12 @@ adb shell "cd /data/local/tmp/arena && dalvikvm64 -Xmx512m -cp arena.zip arena.M
   `--fps 15` plays at the live pace (use `--fps 0` for flat out); `--report-sec` prints turns/s, tick time, the
   process's CPU and the hottest CPU sensor with the core clocks. `-Xmx2g` is refused by the S25. With Git Bash
   instead of PowerShell, set `MSYS_NO_PATHCONV=1` first and use `~/.snake-arena/...` paths.
+* Same game on both: the PC uses the phone's board (195 x 90, 390 x 180 above 100 snakes; `Rules.board`) and times
+  each call by its thread's CPU time (`--wall-clock` for the wall clock). `bench --no-time-limit --digest 1000`
+  prints a CRC of the whole game state every 1000 turns: run with the same seed on the PC and with `dalvikvm64` on
+  the phone it gave identical lines for 5,000 turns of 40 snakes, with and without DQN snakes (2026-10-22).
+* `phone-telemetry` copies the app's telemetry (same format, `"platform": "android"`) to
+  `kotlin/telemetry_phone.json` with adb; the PC's carries `"platform": "pc"`.
 * Java: Gradle runs on Java 27 (`./gradlew updateDaemonJvm --jvm-version=27` with the foojay resolver plugin, here and
   in EmuGaMind) and the code targets Java 26, the newest d8 accepts (build-tools 37: 26 yes, 27 "unsupported class
   file major version 71"). EmuGaMind needs the Kotlin Gradle plugin 2.4 on its build classpath for that: AGP 9.4's

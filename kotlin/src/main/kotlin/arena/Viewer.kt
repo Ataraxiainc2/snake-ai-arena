@@ -39,6 +39,8 @@ object Viewer {
         val w: Int, val h: Int, val turn: Long, val episode: Int, val bodies: Array<IntArray>, val flash: BooleanArray,
         val foods: IntArray, val ranking: List<Row>, val colors: Array<Color>, val humanHead: Int, val stats: String,
         val episodeEnd: String?,
+        /** The human's direction (a Move) and the hold on screen: the 3-2-1 number, or "" while only marking the player. */
+        val humanDir: Int, val hold: String?,
     )
 
     @Volatile private var frame: Frame? = null
@@ -47,12 +49,27 @@ object Viewer {
     @Volatile private var goOn = false
     @Volatile private var current: Arena? = null
     @Volatile private var paintNanos = 0L
+
+    /** The game waits until then: a 3-2-1 before each episode, or the players marked before going on after a pause. */
+    @Volatile private var holdUntil = 0L
+    @Volatile private var holdCountdown = false
     @Volatile private var paints = 0
     private val messages = ConcurrentLinkedQueue<Message>()
 
     private const val EPISODE_WAIT_MS = 60_000L
     private const val MESSAGE_MS = 5_000L
     private const val MAX_MESSAGES = 6
+    private const val COUNTDOWN_MS = 3_000L
+    private const val LOCATE_MS = 2_000L
+
+    /**
+     * Holds the game: a 3-2-1 ([countdown], at the start of every episode, the snakes on their new places) or 2 s
+     * marking the player's snake and where it goes (after a pause), as the app does after a question.
+     */
+    private fun hold(countdown: Boolean) {
+        holdCountdown = countdown
+        holdUntil = System.currentTimeMillis() + if (countdown) COUNTDOWN_MS else LOCATE_MS
+    }
 
     fun run(o: Options, root: File): Int {
         val events = ArrayList<String>(listOfNotNull(Launch.startLine))
@@ -117,7 +134,10 @@ object Viewer {
                     KeyEvent.VK_DOWN -> current?.humanDir = 1
                     KeyEvent.VK_LEFT -> current?.humanDir = 2
                     KeyEvent.VK_RIGHT -> current?.humanDir = 3
-                    KeyEvent.VK_P -> paused = !paused
+                    KeyEvent.VK_P -> {
+                        paused = !paused
+                        if (!paused) hold(countdown = false)
+                    }
                     KeyEvent.VK_ENTER, KeyEvent.VK_SPACE -> goOn = true
                     KeyEvent.VK_ESCAPE -> running = false
                     KeyEvent.VK_PLUS, KeyEvent.VK_ADD, KeyEvent.VK_EQUALS -> pacer.fps = if (pacer.fps == 0) 0 else if (pacer.fps >= 240) 0 else pacer.fps * 2
@@ -150,6 +170,8 @@ object Viewer {
                     Row(i + 1, s.name, s.score, s.rankingScore, s.bestScore, s.id)
                 },
                 colors, a.snakes.firstOrNull { it.kind == Kind.HUMAN }?.body?.head ?: -1, stats, episodeEnd,
+                a.snakes.firstOrNull { it.kind == Kind.HUMAN }?.dir ?: 0,
+                (holdUntil - now).takeIf { it > 0 }?.let { left -> if (holdCountdown) "${(left + 999) / 1000}" else "" },
             )
             panel.repaint()
             lastPaint = now
@@ -170,10 +192,16 @@ object Viewer {
             }
         }
         attach(arena)
+        var episode = -1
         try {
             while (running) {
                 pacer.await()
-                if (paused) {
+                // a new episode (the first one too): everybody on new places, a 3-2-1 before they move
+                if (arena.episode != episode) {
+                    episode = arena.episode
+                    hold(countdown = true)
+                }
+                if (paused || System.currentTimeMillis() < holdUntil) {
                     Thread.sleep(30)
                     publish()
                     continue
@@ -205,6 +233,7 @@ object Viewer {
                         attach(arena)
                         colors = colorsOf(arena)
                         watch.reset()
+                        episode = -1
                     }
                 }
             }
@@ -273,9 +302,13 @@ object Viewer {
     }
 
     private fun paint(g: Graphics2D, f: Frame, width: Int, height: Int) {
-        // the board fills the whole window: 192 x 108 cells on a 16:9 screen are square (20 px at 3840 x 2160)
+        // square cells, as large as the window allows, the board centred (195 x 90 on 3840 x 2160: 19.7 px a cell)
         val board = g.transform
-        g.scale(width.toDouble() / f.w, height.toDouble() / f.h)
+        val cell = minOf(width.toDouble() / f.w, height.toDouble() / f.h)
+        g.translate((width - cell * f.w) / 2, (height - cell * f.h) / 2)
+        g.scale(cell, cell)
+        g.color = Color(16, 16, 16) // the board's edge on a letterboxed screen
+        g.draw(Rectangle2D.Double(0.0, 0.0, f.w.toDouble(), f.h.toDouble()))
         g.color = Color.WHITE
         for (c in f.foods) g.fillRect(c % f.w, c / f.w, 1, 1)
         val colors = f.colors
@@ -293,6 +326,7 @@ object Viewer {
             g.color = Color(255, 255, 255, 90)
             g.stroke = BasicStroke(0.12f)
             g.draw(Rectangle2D.Double(c % f.w - 0.4, c / f.w - 0.4, 1.8, 1.8))
+            if (f.hold != null) locate(g, c % f.w, c / f.w, f.humanDir)
         }
         g.transform = board
         g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
@@ -318,6 +352,22 @@ object Viewer {
         val tableW = table(g, fm, rows, f.colors, 0, 0, measureOnly = true)
         table(g, fm, rows, f.colors, (width - tableW) / 2, height - fs - fm.height * rows.size + fm.ascent)
         f.episodeEnd?.let { episodeEnd(g, f, it, width, height, fs) }
+        f.hold?.takeIf { it.isNotEmpty() }?.let { n -> // the 3-2-1, large in the middle
+            g.font = font.deriveFont(height / 5f)
+            val cm = g.fontMetrics
+            shadowed(g, n, (width - cm.stringWidth(n)) / 2, (height + cm.ascent) / 2 - cm.descent, Color.WHITE, 230)
+        }
+    }
+
+    /** The player's snake made obvious while the game holds: a pulsing ring and an arrow the way it is going. */
+    private fun locate(g: Graphics2D, x: Int, y: Int, dir: Int) {
+        val pulse = 2.5 + 1.0 * Math.sin(System.currentTimeMillis() / 120.0)
+        g.color = Color(0, 255, 120, 220)
+        g.stroke = BasicStroke(0.35f)
+        g.draw(java.awt.geom.Ellipse2D.Double(x + 0.5 - pulse, y + 0.5 - pulse, pulse * 2, pulse * 2))
+        val dx = arena.engine.Rules.DX[dir]
+        val dy = arena.engine.Rules.DY[dir]
+        g.draw(java.awt.geom.Line2D.Double(x + 0.5 + dx * 1.5, y + 0.5 + dy * 1.5, x + 0.5 + dx * 6, y + 0.5 + dy * 6))
     }
 
     /** The ranking columns (rank, name, score now, ranking score); returns its width. */

@@ -6,6 +6,7 @@ import arena.engine.Brain
 import arena.engine.Kind
 import arena.engine.Rules
 import arena.engine.TacticEntry
+import arena.engine.Telemetry
 import arena.loader.TacticLoader
 import arena.reference.References
 import java.io.File
@@ -57,22 +58,24 @@ class Session(o: Options, root: File, round: Int, val events: MutableList<String
 
     init {
         if (o.flag("refs")) entries += Runner.referenceEntries(o.int("ref-copies", 1))
-        val (w, h) = o.board(192 to 108)
         val players = entries.size + (if (human) 1 else 0)
         // as SNAKES.py's default_arena: tactics + 3 (min 10); the human, when playing, takes one of those 3 slots
         var snakes = o.int("snakes", 0).takeIf { it > 0 } ?: maxOf(players, Rules.defaultSnakes(entries.size))
         if (o.flag("no-dqn")) snakes = minOf(snakes, players) // no spare slots without learners
+        // the phone's board unless --cells or --size says otherwise
+        val (w, h) = o.board(Rules.board(snakes))
         val foods = o.int("foods", 0).takeIf { it > 0 } ?: Rules.defaultFoods(snakes)
         val seed = o.long("seed", System.nanoTime() and 0x7fffffffL) + round - 1
         brain = if (snakes > players && !o.flag("no-dqn")) Brain(seed) else null
         val cfg = ArenaConfig(w, h, snakes, foods, seed, human = human,
             budgetNanos = o.long("budget-us", 0L).takeIf { it > 0 }?.times(1000),
             threads = o.int("threads", Runtime.getRuntime().availableProcessors().coerceAtMost(8)),
-            callClock = if (o.flag("cpu-clock")) cpuClock ?: { System.nanoTime() } else ({ System.nanoTime() }))
+            // each call timed by the CPU time of its thread, as on the phone (--wall-clock: by the wall clock)
+            callClock = if (o.flag("wall-clock")) ({ System.nanoTime() }) else cpuClock ?: { System.nanoTime() })
         arena = Arena(cfg, entries.take(snakes - (if (human) 1 else 0)), brain)
         Brain.load(qFile, brain, arena.snakes)
         info = linkedMapOf(
-            "number" to round, "started" to Telemetry.now(), "mode" to if (human) "view" else "unattended",
+            "platform" to "pc", "number" to round, "started" to Telemetry.now(), "mode" to if (human) "view" else "unattended",
             "fps" to o.int("fps", 15), "restart_every_min" to o.double("round-minutes", 0.0).takeIf { it > 0 },
         )
         arena.onEpisodeEnd = { save() }

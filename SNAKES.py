@@ -228,6 +228,8 @@ TELEMETRY_FILE = "telemetry.json"
 LEARNING_WINDOW_MIN = 30  # DQN learning curve resolution (minutes of game time)
 AUTOSAVE_SEC = 300  # q_tables.pkl, report and telemetry.json are also written every 5 min while playing
 EPISODE_AUTO_CONTINUE_SEC = 15  # the end-of-episode screen continues by itself (no ENTER needed)
+HOLD_COUNTDOWN_SEC = 3   # the 3-2-1 before every episode (the game draws but does not move)
+HOLD_LOCATE_SEC = 2      # the human's snake marked when a pause ends
 # Anti-stalling: a snake that eats nothing for this many turns dies of starvation, so circling
 # forever cannot freeze the game (an episode only ends when every snake has died once).
 STARVATION_TURNS = 1500  # 100 s at 15 FPS; normal play eats every ~50 turns
@@ -1497,6 +1499,10 @@ class Game:
         self.game_state = "PLAYING"
         self.snakes_fallen_this_episode = set()
         self.paused = False
+        # The game holds (draws, does not move) until then: a 3-2-1 at the start of every episode, or the human's
+        # snake marked for 2 s when a pause ends, so the player knows where it is and where it is going.
+        self.hold_until = 0.0
+        self.hold_countdown = False
         self.turbo_mode = False
         self.episode_count = 0
         self.episode_start = time.time()
@@ -2128,6 +2134,36 @@ class Game:
             s.respawn()
             s.puntaje = 0.0
         self.game_state = "PLAYING"
+        self.hold(countdown=True)
+
+    def hold(self, countdown):
+        """A 3-2-1 (countdown) or 2 s marking the human's snake; the episode clock does not run meanwhile."""
+        if self.headless:
+            return
+        seconds = HOLD_COUNTDOWN_SEC if countdown else HOLD_LOCATE_SEC
+        self.hold_countdown = countdown
+        self.hold_until = time.time() + seconds
+        self.episode_start += seconds
+
+    def draw_hold(self):
+        """While holding: the human's snake ringed with an arrow the way it goes, and the 3-2-1 in the middle."""
+        left = self.hold_until - time.time()
+        if left <= 0:
+            return
+        human = self.snakes[0] if self.play_as_user and self.snakes and self.snakes[0].viva else None
+        if human is not None and human.segmentos:
+            hx, hy = human.segmentos[0]
+            cx, cy = hx + BLOCK_SIZE // 2, hy + BLOCK_SIZE // 2
+            radius = int(BLOCK_SIZE * (2.5 + math.sin(time.time() * 8)))
+            pygame.draw.circle(self.ventana, MATRIX_GREEN, (cx, cy), radius, 3)
+            dx, dy = {"UP": (0, -1), "DOWN": (0, 1), "LEFT": (-1, 0), "RIGHT": (1, 0)}.get(human.direccion, (0, 0))
+            pygame.draw.line(self.ventana, MATRIX_GREEN, (cx + dx * BLOCK_SIZE * 1.5, cy + dy * BLOCK_SIZE * 1.5),
+                             (cx + dx * BLOCK_SIZE * 6, cy + dy * BLOCK_SIZE * 6), 4)
+        if self.hold_countdown:
+            big = getattr(self, "_font_countdown", None)
+            if big is None:
+                big = self._font_countdown = pygame.font.SysFont(None, max(120, self.ALTO // 4))
+            draw_text(self.ventana, str(int(left) + 1), big, WHITE, (self.ANCHO // 2, self.ALTO // 2), center=True)
 
     def create_particles(self, pos, count=10):
         for _ in range(count):
@@ -2209,6 +2245,7 @@ class Game:
                     elif self.pause_start_time is not None:
                         self.episode_start += (time.time() - self.pause_start_time)
                         self.pause_start_time = None
+                        self.hold(countdown=False)
                 elif event.key == pygame.K_l:
                     self.show_logs = not self.show_logs
                 elif event.key == pygame.K_1:
@@ -2227,7 +2264,7 @@ class Game:
                         self.snakes[0].direccion = desired
 
     def update(self, dt):
-        if self.paused:
+        if self.paused or time.time() < self.hold_until:
             return
         steps = 12 if self.turbo_mode else 1
         for _ in range(steps):
@@ -2325,6 +2362,7 @@ class Game:
             for i, line in enumerate(self.learning_log[-7:]):
                 draw_text(self.ventana, line, self.font_info_alive, WHITE, (20, self.ALTO - 180 + i * 18))
 
+        self.draw_hold()
         pygame.display.update()
 
     def draw_episode_end_screen(self):
@@ -2351,6 +2389,7 @@ class Game:
 
     def run(self, max_episodes=None, max_seconds=None, fps_cap=None, save_every=None, on_save=None):
         started = last_save = time.time()
+        self.hold(countdown=True)  # the first episode starts with a 3-2-1 too
         if save_every is None:
             save_every = AUTOSAVE_SEC
         self._saved_turn = -1
@@ -2435,7 +2474,9 @@ def run_headless_evaluation(lr, hidden_size, gamma, imitation_rate, episodes=2, 
 GAME_OUTPUT_FILES = {"game_analysis_report.txt", TELEMETRY_FILE, "q_tables.pkl", TELEMETRY_FILE + ".tmp",
                      # written by the Kotlin arena (kotlin/, same game for kotlin/tactics/*.kt)
                      "kotlin/telemetry_kotlin.json", "kotlin/telemetry_kotlin.json.tmp",
-                     "kotlin/q_tables_kotlin.bin", "kotlin/q_tables_kotlin.bin.tmp"}
+                     "kotlin/q_tables_kotlin.bin", "kotlin/q_tables_kotlin.bin.tmp",
+                     # the phone's telemetry (EmuGaMind), copied by the Kotlin arena's phone-telemetry command
+                     "kotlin/telemetry_phone.json", "kotlin/telemetry_phone.json.tmp"}
 # Build output of the Kotlin arena (Gradle, compiled tactics): not watched
 UNWATCHED_DIRS = {"kotlin/build", "kotlin/.gradle", "kotlin/.kotlin"}
 

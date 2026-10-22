@@ -14,6 +14,8 @@ private const val USAGE = """Snake Battle Royale AI Arena - Kotlin engine (same 
   bench   [--snakes 400] [--cells 390x180] [--threads T] [--dqn N] [--warmup W] [--ticks T]   engine + tactics speed
   pack                          compile kotlin/tactics/*.kt for the phone (then ./gradlew phoneDex), see kotlin/README.md
   parity  trace.txt ...         replay games recorded from SNAKES.py by kotlin/parity/python_trace.py
+  phone-telemetry               copy the phone's telemetry (EmuGaMind's Snake game, same format) to
+                                kotlin/telemetry_phone.json with adb (the phone connected by USB, debugging on)
   sync                          create an empty kotlin/tactics/<Provider-Model_Name>.kt for every known model that has
                                 none (models.dev, as SNAKES.py does); existing files are never touched. run and view
                                 do it at start unless --no-sync
@@ -24,7 +26,7 @@ fun main(args: Array<String>) {
     val o = Options(args.drop(1))
     val root = arenaRoot()
     if (cmd == "organizer" && args.getOrNull(1) == "init") exitProcess(Organizer.init(root))
-    if (cmd in setOf("run", "view", "check", "bench", "sync", "pack")) {
+    if (cmd in setOf("run", "view", "check", "bench", "sync", "pack", "phone-telemetry")) {
         Organizer.check(root)?.let {
             Launch.start(root, "REFUSED $cmd", args.drop(1), game = false)
             println("[KOTLIN ARENA] not started: $it")
@@ -42,6 +44,7 @@ fun main(args: Array<String>) {
         "check" -> Check.run(o.positional, File(root, TACTICS), File(WORK, "tactics"))
         "bench" -> Bench.run(o, root)
         "pack" -> Bench.pack(root)
+        "phone-telemetry" -> PhoneTelemetry.pull(root)
         "parity" -> if (o.positional.all { Parity.run(File(it)) }) 0 else 1
         else -> {
             print(USAGE)

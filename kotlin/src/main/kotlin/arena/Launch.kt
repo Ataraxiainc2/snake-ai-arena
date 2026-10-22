@@ -1,5 +1,6 @@
 package arena
 
+import arena.engine.Telemetry
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.channels.FileLock

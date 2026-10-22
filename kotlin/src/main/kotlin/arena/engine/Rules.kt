@@ -43,6 +43,16 @@ object Rules {
     fun defaultSnakes(tactics: Int, max: Int = 400) = minOf(max, maxOf(10, tactics + 3))
     fun defaultFoods(snakes: Int) = maxOf(8, Math.rint(snakes * 0.8).toInt())
 
+    /** More snakes than this play on the large board. */
+    const val CROWD = 100
+
+    /**
+     * The board for a game of [snakes] when none is chosen, the same on the PC and on the phone (EmuGaMind), in square
+     * cells of a 13:6 phone screen: 195 x 90, or 390 x 180 for more than [CROWD] snakes. One board for both, so what a
+     * tactic learns from either telemetry holds in the other.
+     */
+    fun board(snakes: Int): Pair<Int, Int> = if (snakes > CROWD) 390 to 180 else 195 to 90
+
     /**
      * Time budget per decide() call: 100 ms shared by all snakes, between 0.1 ms and 15 ms (SNAKES.py's limit).
      * 6 snakes or fewer: 15 ms; 20: 5 ms; 100: 1 ms; 400: 0.25 ms. A call that returns after twice its budget

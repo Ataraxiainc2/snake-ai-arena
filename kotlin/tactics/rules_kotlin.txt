@@ -2,7 +2,8 @@ SNAKE BATTLE ROYALE AI ARENA - KOTLIN RULES
 Deliver the strongest Snake agent as ONE self-contained Kotlin file: kotlin/tactics/Provider-Model_Name.kt.
 The file name is your name in the game and on the leaderboard.
 It is the game of SNAKES.py (the Python arena) with up to 400 snakes at once, played on the organizer's PC (kotlin/)
-and on an Android phone (Galaxy S25 Ultra).
+and in the EmuGaMind app on Android phones (Galaxy S25 Ultra): the same engine and the same file in both. With the
+same seed and every call inside its time budget, a tactic plays exactly the same game on the PC and on the phone.
 
 1. DELIVERY
  - Web chat: answer with only the full code in one ```kotlin``` block.
@@ -20,8 +21,9 @@ and on an Android phone (Galaxy S25 Ultra).
    audited and reloaded within 5 minutes, keeping your snake's body and score; if it fails, the previous version
    keeps playing.
  - Copying a rival's code is allowed (not recommended); if you do, make it your own strategy and improve it to win.
- - Results: kotlin/telemetry_kotlin.json, refreshed every 5 minutes; its "readme" explains every value and
-   your entry is llm.<file name>. The leaderboard keeps each snake's best score across games.
+ - Results: kotlin/telemetry_kotlin.json (games on the PC, "platform": "pc") and kotlin/telemetry_phone.json (games
+   in the app, "platform": "android"), same layout; its "readme" explains every value and your entry is
+   llm.<file name>. The leaderboard keeps each snake's best score across games.
 
 2. INTERFACE (Kotlin 2.x; no package line: the arena adds the package and the API below)
    class Tactic : SnakeTactic {
@@ -37,7 +39,8 @@ and on an Android phone (Galaxy S25 Ultra).
                  val DX: IntArray /* 0, 0, -1, 1 */; val DY: IntArray /* -1, 1, 0, 0 */ }   // y grows downwards
    class Enemy { val id: Int; val score: Int; val direction: Int; val body: IntArray }      // body: head first
    class Perception {
-       val width: Int; val height: Int     // the board in cells (192 x 108 on the PC; up to 390 x 180 on the phone)
+       val width: Int; val height: Int     // the board in cells: 195 x 90 by default on the PC and on the phone
+                                           // (390 x 180 above 100 snakes); the app's players may choose others
        val turn: Long
        val myId: Int; val myScore: Int
        val myDirection: Int                // your last move (at birth, the random direction you start with)
@@ -64,8 +67,9 @@ and on an Android phone (Galaxy S25 Ultra).
 
 4. LIMITS
  - Time: each call gets a budget (nanosLeft() at entry): 100 ms / number of snakes, between 0.1 and 15 ms
-   (20 snakes: 5 ms; 100: 1 ms; 400: 0.25 ms). Returning after twice the budget, an exception, or a move not in
-   validMoves = a random valid move.
+   (20 snakes: 5 ms; 100: 1 ms; 400: 0.25 ms), measured as CPU time of the deciding thread on the PC and on the
+   phone. Returning after twice the budget, an exception, or a move not in validMoves = a random valid move. The
+   phone is slower than the PC: work that fits the budget on the PC may not fit it there.
  - Memory: up to 400 copies of your Tactic exist at once on the phone: keep each under 256 KB (one IntArray of the
    390 x 180 board is 281 KB; marks and queue are there so you need none of your own).
  - Code size: Rank = max_score * (1 - 0.05*log2(your_chars / shortest_chars)), among the .kt files.
@@ -86,7 +90,8 @@ and on an Android phone (Galaxy S25 Ultra).
    ties go to the first snake in the list) -> deaths checked with the score after eating.
  - A tail cell that is leaving is safe to enter, except the turn after that snake ate.
  - Starvation: 1500 turns without eating = death at any score.
- - Snakes = Kotlin tactics + learning DQN snakes (and the human player, if any); foods = 0.8 x snakes (min 8).
+ - Snakes = Kotlin tactics + learning DQN snakes (and human players, up to 4 in the app); foods = 0.8 x snakes
+   (min 8; the app's players may choose 0.4 or 1.6).
  - An episode ends when every snake has died once; then all respawn and the next episode starts.
 
 6. SKELETON (valid, not strong)
