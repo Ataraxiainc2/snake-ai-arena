@@ -3,6 +3,7 @@ package arena
 import arena.engine.Arena
 import arena.engine.GameEvent
 import arena.engine.Kind
+import arena.engine.Palette
 import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.Dimension
@@ -417,8 +418,6 @@ object Viewer {
         Viewer::class.java.getResourceAsStream("/fonts/IBMPlexMono-Medium.ttf")!!.use { Font.createFont(Font.TRUETYPE_FONT, it) }
     }.getOrElse { Font(Font.MONOSPACED, Font.PLAIN, 12) }
 
-    private fun colorsOf(arena: Arena) = Array(arena.snakes.size) { i ->
-        if (arena.snakes[i].kind == Kind.HUMAN) Color(0, 200, 70)
-        else Color.getHSBColor(((i * 0.618033988749895) % 1.0).toFloat(), 0.88f, 0.95f)
-    }
+    /** The engine's palette (the same as the phone's): every snake a colour of its own, readable on black. */
+    private fun colorsOf(arena: Arena) = Palette.forSnakes(arena.snakes).map { Color(it, true) }.toTypedArray()
 }
