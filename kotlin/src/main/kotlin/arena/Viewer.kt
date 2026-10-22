@@ -303,13 +303,10 @@ object Viewer {
     }
 
     private fun paint(g: Graphics2D, f: Frame, width: Int, height: Int) {
-        // square cells, as large as the window allows, the board centred (195 x 90 on 3840 x 2160: 19.7 px a cell)
+        // the board on the whole screen: the same cells as on the phone (195 x 90), stretched to the screen's shape
+        // (3840 x 2160: 19.7 x 24 px a cell), so a 16:9 monitor has no black bands
         val board = g.transform
-        val cell = minOf(width.toDouble() / f.w, height.toDouble() / f.h)
-        g.translate((width - cell * f.w) / 2, (height - cell * f.h) / 2)
-        g.scale(cell, cell)
-        g.color = Color(16, 16, 16) // the board's edge on a letterboxed screen
-        g.draw(Rectangle2D.Double(0.0, 0.0, f.w.toDouble(), f.h.toDouble()))
+        g.scale(width.toDouble() / f.w, height.toDouble() / f.h)
         g.color = Color.WHITE
         for (c in f.foods) g.fillRect(c % f.w, c / f.w, 1, 1)
         val colors = f.colors
