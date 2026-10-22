@@ -66,6 +66,7 @@ class TacticLoader(private val folder: File, private val cacheRoot: File) {
         val ctor = runCatching { cls.getDeclaredConstructor() }.getOrElse { return Loaded(null, "Tactic() needs no arguments") }
         val factory = { ctor.newInstance() as SnakeTactic }
         runCatching { factory() }.onFailure { return Loaded(null, "Tactic() failed: ${it.cause ?: it}") }
+        markPassed(src)
         return Loaded(TacticEntry(stem.take(36), file.name, src.length, factory), null, classes = classes, className = "arena.tactics.$id.Tactic")
     }
 
@@ -115,6 +116,16 @@ class TacticLoader(private val folder: File, private val cacheRoot: File) {
             }
         }
         return out
+    }
+
+    /**
+     * Records that this exact content passed (audit, compile, bytecode audit, a Tactic() made): an empty file named
+     * by the SHA-256 of the source with LF line ends, in passed/ next to the compile cache (~/.snake-arena/passed).
+     * EmuGaMind's build takes a tactic from this PC's arena folder only when its content is recorded here, so a file
+     * a model is still writing never reaches the app.
+     */
+    private fun markPassed(src: String) {
+        runCatching { File(cacheRoot.parentFile, "passed").apply { mkdirs() }.resolve(sha(src)).createNewFile() }
     }
 
     private fun packageId(stem: String): String {
