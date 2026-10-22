@@ -34,6 +34,10 @@ object Rules {
         "Protagoras", "Gorgias", "Parmenides", "Empedocles", "Anaximander",
     )
     const val HUMAN_NAME = "Human (You)"
+    const val MAX_HUMANS = 4
+
+    /** SNAKES.py's name for a lone player; with several, Human 1 to Human 4. */
+    fun humanName(player: Int, humans: Int) = if (humans == 1) HUMAN_NAME else "Human ${player + 1}"
 
     /** SNAKES.py's default_arena for the phone-sized arena: tactics + 3 snakes (min 10), 0.8 foods per snake (min 8). */
     fun defaultSnakes(tactics: Int, max: Int = 400) = minOf(max, maxOf(10, tactics + 3))

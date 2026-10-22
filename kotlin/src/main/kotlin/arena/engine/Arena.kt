@@ -6,6 +6,7 @@ import java.util.concurrent.Callable
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicIntegerArray
 
 /** A moment worth showing: [kind] is rule100, warn100, walls, rivals, ten (detail = turns) or died (detail = cause). */
 class GameEvent(val snake: Int, val kind: String, val detail: String?, val turn: Long)
@@ -17,6 +18,8 @@ class ArenaConfig(
     val foods: Int,
     val seed: Long,
     val human: Boolean = false,
+    /** Human players (0 to Rules.MAX_HUMANS), the first snakes; [human] alone means one, as in SNAKES.py. */
+    val humans: Int = if (human) 1 else 0,
     /** Per-call time budget of the tactics; null = Rules.budgetNanos(snakes). */
     val budgetNanos: Long? = null,
     /** Threads that run the tactics' decide() calls (the engine itself is single-threaded and deterministic). */
@@ -77,8 +80,18 @@ class Arena(val cfg: ArenaConfig, tactics: List<TacticEntry>, val brain: Brain? 
     var deathsTotal = 0L
         private set
 
-    @Volatile
-    var humanDir = -1
+    /** Each human player's last requested move (-1: none yet), set from the UI thread. */
+    private val humanDirs = AtomicIntegerArray(Rules.MAX_HUMANS).also { for (i in 0 until it.length()) it.set(i, -1) }
+
+    /** The first (or only) human player's move, as SNAKES.py's arrow keys. */
+    var humanDir: Int
+        get() = humanDirs.get(0)
+        set(value) = humanDirs.set(0, value)
+
+    /** A move for human player [player] (0-based; its snake has that id). */
+    fun steer(player: Int, move: Int) {
+        if (player in 0 until humanDirs.length()) humanDirs.set(player, move)
+    }
 
     /** Wall time of the last tick and of its decide() phase (all tactics, on every thread), in ns. */
     var lastTickNanos = 0L
@@ -114,11 +127,8 @@ class Arena(val cfg: ArenaConfig, tactics: List<TacticEntry>, val brain: Brain? 
             (height / 2) * width + x
         }
         val list = ArrayList<Snake>(n)
-        var start = 0
-        if (cfg.human) {
-            list.add(Snake(0, Rules.HUMAN_NAME, Kind.HUMAN, null))
-            start = 1
-        }
+        val start = cfg.humans.coerceIn(0, minOf(n, Rules.MAX_HUMANS))
+        for (h in 0 until start) list.add(Snake(h, Rules.humanName(h, start), Kind.HUMAN, null))
         val used = HashSet(list.map { it.name })
         for (i in 0 until n - start) {
             val t = tactics.getOrNull(i)
@@ -267,7 +277,7 @@ class Arena(val cfg: ArenaConfig, tactics: List<TacticEntry>, val brain: Brain? 
                 }
                 Kind.HUMAN -> {
                     observe(s, mainFeatures, needFull)
-                    val d = humanDir
+                    val d = humanDirs.get(s.id)
                     if (d >= 0 && !(s.body.size >= 2 && d == Rules.OPPOSITE[s.dir])) s.dir = d
                 }
             }
