@@ -47,7 +47,7 @@ class Options(args: List<String>) {
  * One game of a run: the tactic files loaded fresh (new class loaders), the spare slots filled with learning DQN
  * snakes, and what is saved in kotlin/: telemetry_kotlin.json and q_tables_kotlin.bin.
  */
-class Session(o: Options, root: File, round: Int, val events: MutableList<String>, human: Boolean = false) {
+class Session(o: Options, private val root: File, round: Int, val events: MutableList<String>, human: Boolean = false) {
     private val loader = TacticLoader(File(root, o.str("folder", TACTICS)), File(WORK, "tactics"))
     private val entries = ArrayList(loader.loadAll { log(it) })
     private val telemetryFile = File(root, o.str("telemetry", "kotlin/telemetry_kotlin.json"))
@@ -92,6 +92,8 @@ class Session(o: Options, root: File, round: Int, val events: MutableList<String
     fun save() {
         runCatching { Brain.save(qFile, brain, arena.snakes, arena.episode) }.onFailure { println("[SAVE] scores and weights: $it") }
         runCatching { Telemetry.write(telemetryFile, arena, brain, info, events) }.onFailure { println("[SAVE] telemetry: $it") }
+        // the phone's games too, for the models, when a phone is connected
+        PhoneTelemetry.copyIfConnected(root)
     }
 
     /**

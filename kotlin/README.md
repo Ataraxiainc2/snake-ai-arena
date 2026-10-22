@@ -202,7 +202,11 @@ adb shell "cd /data/local/tmp/arena && dalvikvm64 -Xmx512m -cp arena.zip arena.M
   prints a CRC of the whole game state every 1000 turns: run with the same seed on the PC and with `dalvikvm64` on
   the phone it gave identical lines for 5,000 turns of 40 snakes, with and without DQN snakes (2026-10-22).
 * `phone-telemetry` copies the app's telemetry (same format, `"platform": "android"`) to
-  `kotlin/telemetry_phone.json` with adb; the PC's carries `"platform": "pc"`.
+  `kotlin/telemetry_phone.json` with adb; `run` and `view` do it by themselves at every save (each episode, every 5
+  minutes, the end) when a phone is connected. The PC's carries `"platform": "pc"`.
+* EmuGaMind's build takes a changed tactic from this folder only after it passes: it runs this arena's `check` on
+  the changed files itself (the installed program, `gradlew installDist`), and a file that fails keeps its previous
+  version in the app.
 * Java: Gradle runs on Java 27 (`./gradlew updateDaemonJvm --jvm-version=27` with the foojay resolver plugin, here and
   in EmuGaMind) and the code targets Java 26, the newest d8 accepts (build-tools 37: 26 yes, 27 "unsupported class
   file major version 71"). EmuGaMind needs the Kotlin Gradle plugin 2.4 on its build classpath for that: AGP 9.4's

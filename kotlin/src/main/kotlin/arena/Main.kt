@@ -15,7 +15,8 @@ private const val USAGE = """Snake Battle Royale AI Arena - Kotlin engine (same 
   pack                          compile kotlin/tactics/*.kt for the phone (then ./gradlew phoneDex), see kotlin/README.md
   parity  trace.txt ...         replay games recorded from SNAKES.py by kotlin/parity/python_trace.py
   phone-telemetry               copy the phone's telemetry (EmuGaMind's Snake game, same format) to
-                                kotlin/telemetry_phone.json with adb (the phone connected by USB, debugging on)
+                                kotlin/telemetry_phone.json with adb (the phone connected by USB, debugging on);
+                                run and view do it by themselves at every save when a phone is connected
   sync                          create an empty kotlin/tactics/<Provider-Model_Name>.kt for every known model that has
                                 none (models.dev, as SNAKES.py does); existing files are never touched. run and view
                                 do it at start unless --no-sync
