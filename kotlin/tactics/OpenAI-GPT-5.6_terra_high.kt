@@ -1,31 +1,18 @@
-import kotlin.math.abs
-import kotlin.math.min
-
 class Tactic : SnakeTactic {
- private var o=IntArray(0);private var s=IntArray(0);private var q=IntArray(0);private var g=0;private var sg=0
- private var w=0;private var h=0;private var tr=true
- private fun ds(a:Int,c:Int):Int{val i=abs(a%w-c%w);val j=abs(a/w-c/w);return if(tr)min(i,w-i)+min(j,h-j)else i+j}
- private fun nx(c:Int,d:Int):Int{val x=c%w+Move.DX[d];val y=c/w+Move.DY[d];return if(tr)(y+h)%h*w+(x+w)%w else if(x in 0 until w&&y in 0 until h)y*w+x else-1}
+ private var w=0;private var h=0;private var t=true;private var hd=0
+ private fun nx(c:Int,d:Int):Int{val x=c%w+Move.DX[d];val y=c/w+Move.DY[d];return if(t)(y+h)%h*w+(x+w)%w else if(x in 0 until w&&y in 0 until h)y*w+x else hd}
+ private fun ds(a:Int,c:Int):Int{val i=kotlin.math.abs(a%w-c%w);val j=kotlin.math.abs(a/w-c/w);return if(t)kotlin.math.min(i,w-i)+kotlin.math.min(j,h-j)else i+j}
+ private fun room(c:Int,cap:Int,mk:IntArray,q:IntArray,sm:Int,bm:Int):Int{if(mk[c]==bm)return 0;mk[c]=sm;q[0]=c;var n=1;var k=0
+  while(k<n){val a=q[k++];for(d in 0..3){val e=nx(a,d);val m=mk[e];if(m!=sm&&m!=bm){mk[e]=sm;q[n++]=e;if(n>cap)return cap}}};return n}
  override fun decide(p:Perception):Int{
-  val vm=p.validMoves;if(vm.size<2)return vm[0]
-  w=p.width;h=p.height;tr=p.toroidal;val n=w*h
-  if(o.size!=n){o=IntArray(n);s=IntArray(n);q=IntArray(n+1);g=0;sg=0}
-  g++;val b=p.myBody;val hd=b[0];val tl=b[b.size-1];val v=p.myScore
-  val sl=v>98||p.selfCollision||p.selfCollisionWarning;val el=v>298||p.enemyCollision
-  if(sl)for(i in 0 until b.size-1)o[b[i]]=g
-  if(el)for(e in p.enemies){for(c in e.body)o[c]=g;val eh=e.body[0];val ex=eh%w;val ey=eh/w
-   for(d in 0..3){val x=ex+Move.DX[d];val y=ey+Move.DY[d];val ec=if(tr)(y+h)%h*w+(x+w)%w else if(x in 0 until w&&y in 0 until h)y*w+x else-1;if(ec>=0)o[ec]=g}}
-  val u=p.turnsWithoutFood>600;var tg=tl;var bk=Int.MAX_VALUE
-  for(i in p.foods.indices){val f=p.foods[i];val d=ds(hd,f);val e=p.foodRivalDistance(i);val k=if(u)d else d+(if(el&&(e<=d||e<4))999999 else if(e<d)8+2*(d-e)else if(e==d)2 else 0);if(k<bk){bk=k;tg=f}}
-  val cap=minOf(if(p.nanosLeft()<1000000L)160 else 500,b.size*2+10);var best=vm[0];var mx=-1e18
-  for(m in vm){val c=nx(hd,m);if(c<0||(sl&&o[c]==g)||(el&&o[c]==g))continue;val ef=c in p.foods;if(c==tl&&ef)continue
-   sg++;s[c]=sg;q[0]=c;var qh=0;var qt=1;var reach=c==tl&&!ef
-   while(qh<qt){if(reach||qt>cap)break;val a=q[qh++];val ax=a%w;val ay=a/w
-    for(d in 0..3){val x=ax+Move.DX[d];val y=ay+Move.DY[d];val nc=if(tr)(y+h)%h*w+(x+w)%w else if(x in 0 until w&&y in 0 until h)y*w+x else-1
-     if(nc>=0&&s[nc]!=sg){val z=nc==tl;if(z&&!ef){reach=true;s[nc]=sg;q[qt++]=nc;break};if(o[nc]!=g&&(!z||!ef)){s[nc]=sg;q[qt++]=nc;if(qt>cap)break}}}}
-   val tier=if(reach)2.0 else if(qt>cap)1.0 else 0.0
-   val sc=tier*1e6+(if(tier>0.0){if(ef)5e4 else 0.0}else qt*100.0)-ds(c,tg)*10.0-ds(c,tl)+(if(m==p.myDirection)2.0 else 0.0)
-   if(sc>mx){mx=sc;best=m}}
+  w=p.width;h=p.height;t=p.toroidal;val mk=p.marks;val q=p.queue;val bm=p.newMark();val b=p.myBody;hd=b[0];val v=p.myScore;val tl=b[b.size-1]
+  if(v>98){val z=if(p.previousReward==15f)b.size else b.size-1;for(i in 0 until z)mk[b[i]]=bm}
+  if(v>298)for(e in p.enemies){for(c in e.body)mk[c]=bm;if(!t)for(d in 0..3)mk[nx(e.body[0],d)]=bm}
+  mk[hd]=bm;var tg=tl;var bk=Int.MAX_VALUE
+  for(i in p.foods.indices){val f=p.foods[i];val d=ds(hd,f);val e=p.foodRivalDistance(i);val k=d+(if(e<d)8+2*(d-e)else 0)+(if(e==d)2 else 0);if(k<bk){bk=k;tg=f}}
+  val cap=b.size+(if(v>298)40 else 8);val hungry=p.turnsWithoutFood>800;val md=p.myDirection;var best=p.validMoves[0];var k0=-1;var k1=0;var k2=0;var k3=0;var k4=2
+  for(m in p.validMoves){val c=nx(hd,m);val r=room(c,cap,mk,q,p.newMark(),bm);val a0=if(hungry)if(r>0)1 else 0 else r;val a1=if(hungry)0 else if(c in p.foods)1 else 0;val a2=-ds(c,tg);val a3=if(hungry)0 else-ds(c,tl);val a4=if(m==md)0 else 1
+   if(a0>k0||a0==k0&&(a1>k1||a1==k1&&(a2>k2||a2==k2&&(a3>k3||a3==k3&&a4<k4)))){best=m;k0=a0;k1=a1;k2=a2;k3=a3;k4=a4}}
   return best
  }
 }

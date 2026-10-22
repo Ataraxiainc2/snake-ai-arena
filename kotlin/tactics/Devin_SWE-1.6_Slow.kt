@@ -2,36 +2,34 @@ import kotlin.math.abs
 import kotlin.math.min
 
 class Tactic : SnakeTactic {
- private var o=IntArray(0);private var s=IntArray(0);private var q=IntArray(0);private var g=0;private var sg=0
- private var w=0;private var h=0;private var tr=true;private var hd=0
- private fun ds(a:Int,c:Int):Int{val i=abs(a%w-c%w);val j=abs(a/w-c/w);return if(tr)min(i,w-i)+min(j,h-j)else i+j}
- private fun nx(c:Int,d:Int):Int{val x=c%w+Move.DX[d];val y=c/w+Move.DY[d];return if(tr)(y+h)%h*w+(x+w)%w else if(x in 0 until w&&y in 0 until h)y*w+x else hd}
- private fun room(c:Int,cap:Int,tail:Int,ef:Boolean):Pair<Int,Boolean>{
-  if(o[c]==g)return Pair(0,false)
-  sg++;s[c]=sg;q[0]=c;var n=1;var k=0;var reach=c==tail&&!ef
-  while(k<n&&!reach&&n<=cap){val a=q[k++]
-   for(d in 0..3){val b=nx(a,d)
-    if(s[b]!=sg){val isTl=b==tail
-     if(isTl&&!ef){reach=true;s[b]=sg;q[n++]=b;break}
-     if(o[b]!=g&&(!isTl||!ef)){s[b]=sg;q[n++]}}}}
-  return Pair(n,reach)}
+ private var w=0;private var h=0;private var t=true;private var hd=0
+ private var bs=0;private var ln=0;private var gr=0
+ private fun nx(c:Int,d:Int):Int{val x=c%w+Move.DX[d];val y=c/w+Move.DY[d];return if(t)(y+h)%h*w+(x+w)%w else if(x in 0 until w&&y in 0 until h)y*w+x else hd}
+ private fun ds(a:Int,c:Int):Int{val i=abs(a%w-c%w);val j=abs(a/w-c/w);return if(t)min(i,w-i)+min(j,h-j)else i+j}
+ private fun ok(c:Int,d:Int,mk:IntArray,g:Int):Boolean{val m=mk[c];return m!=g&&(m<=bs||m>bs+ln||d>=ln+bs+1-m+gr)}
+ private fun room(c:Int,cap:Int,mk:IntArray,q:IntArray,sg:Int,g:Int):Int{
+  if(!ok(c,1,mk,g))return 0
+  mk[c]=sg;q[0]=c;var n=1;var k=0;var d=1;var e=1
+  while(k<n){if(k==e){d++;e=n}
+   val a=q[k++]
+   for(m in 0..3){val b=nx(a,m)
+    if(mk[b]!=sg&&ok(b,d+1,mk,g)){mk[b]=sg;q[n++]=b;if(n>cap)return cap}}}
+  return n}
  override fun decide(p:Perception):Int{
-  val vm=p.validMoves;if(vm.size<2)return vm[0]
-  w=p.width;h=p.height;tr=p.toroidal;val n=w*h
-  if(o.size!=n){o=IntArray(n);s=IntArray(n);q=IntArray(n+1);g=0;sg=0}
-  g++;val b=p.myBody;hd=b[0];val tl=b[b.size-1];val v=p.myScore
-  val sl=v>98||p.selfCollision||p.selfCollisionWarning;val el=v>298||p.enemyCollision
-  if(sl)for(i in 0 until b.size-1)o[b[i]]=g
-  if(el)for(e in p.enemies){for(c in e.body)o[c]=g;val eh=e.body[0];val ex=eh%w;val ey=eh/w
-   for(d in 0..3){val x=ex+Move.DX[d];val y=ey+Move.DY[d];val ec=if(tr)(y+h)%h*w+(x+w)%w else if(x in 0 until w&&y in 0 until h)y*w+x else-1;if(ec>=0)o[ec]=g}}
-  o[hd]=g
-  val u=p.turnsWithoutFood>500;var tg=tl;var bk=Int.MAX_VALUE
-  for(i in p.foods.indices){val f=p.foods[i];val d=ds(hd,f);val e=p.foodRivalDistance(i);val k=if(u)d else d+(if(el&&(e<=d||e<4))999999 else if(e<d)8+2*(d-e)else if(e==d)2 else 0);if(k<bk){bk=k;tg=f}}
-  val cap=minOf(if(p.nanosLeft()<400000L)80 else 500,b.size*2+8);var best=vm[0];var maxSc=-1e18
-  for(m in vm){val c=nx(hd,m);if(sl&&o[c]==g)continue;if(el&&o[c]==g)continue;val ef=c in p.foods;if(c==tl&&ef)continue
-   val(r,reach)=room(c,cap,tl,ef);val tier=if(reach)2.0 else if(r>cap)1.0 else 0.0
-   val sc=tier*1e6+(if(tier>0.0){if(ef)5e4 else 0.0}else r*100.0)-ds(c,tg)*10.0-ds(c,tl)+(if(m==p.myDirection)2.0 else 0.0)
-   if(sc>maxSc){maxSc=sc;best=m}}
+  w=p.width;h=p.height;t=p.toroidal
+  val mk=p.marks;val q=p.queue;val g=p.newMark()
+  val b=p.myBody;hd=b[0];val v=p.myScore;val tl=b[b.size-1]
+  bs=p.newMark();ln=0;val g0=if(p.previousReward==15f)1 else 0
+  if(v>98){ln=b.size;for(i in b.indices){mk[b[i]]=bs+1+i;p.newMark()}}
+  if(v>298)for(e in p.enemies){for(c in e.body)mk[c]=g;if(!t)for(d in 0..3)mk[nx(e.body[0],d)]=g}
+  mk[hd]=g
+  var tg=tl;var bk=Int.MAX_VALUE
+  for(i in p.foods.indices){val f=p.foods[i];val d=ds(hd,f);val e=p.foodRivalDistance(i);val k=d+(if(e<d)8+2*(d-e)else 0)+(if(e==d)2 else 0);if(k<bk){bk=k;tg=f}}
+  val cap=b.size+(if(v>298)40 else 8);val hungry=p.turnsWithoutFood>700;val md=p.myDirection
+  var best=p.validMoves[0];var k0=-1;var k1=0;var k2=0;var k3=0;var k4=2
+  for(m in p.validMoves){val c=nx(hd,m);val f=c in p.foods;gr=g0+(if(f)1 else 0);val r=room(c,cap,mk,q,p.newMark(),g)
+   val a0=if(hungry)(if(r>0)1 else 0)else r;val a1=if(hungry||!f)0 else 1;val a2=-ds(c,tg);val a3=if(hungry)0 else -ds(c,tl);val a4=if(m==md)0 else 1
+   if(a0>k0||a0==k0&&(a1>k1||a1==k1&&(a2>k2||a2==k2&&(a3>k3||a3==k3&&a4<k4)))){best=m;k0=a0;k1=a1;k2=a2;k3=a3;k4=a4}}
   return best
  }
 }
