@@ -363,11 +363,22 @@ class Arena(val cfg: ArenaConfig, tactics: List<TacticEntry>, val brain: Brain? 
         lastTickNanos = System.nanoTime() - tickStart
     }
 
+    /**
+     * The snakes by their place in this episode: the best score in it (any of their lives), then the score now, then
+     * the all-time ranking. What the screens list while the game plays; the all-time ranking is [Snake.rankingScore].
+     */
+    fun episodeStandings(): List<Snake> = snakes.sortedWith(
+        compareByDescending<Snake> { it.episodeBest }.thenByDescending { it.score }.thenByDescending { it.rankingScore },
+    )
+
     private fun newEpisode() {
         episode++
         fallen.fill(false)
         fallenCount = 0
-        for (s in snakes) respawn(s)
+        for (s in snakes) {
+            s.episodeBest = 0
+            respawn(s)
+        }
     }
 
     private fun eat(s: Snake, head: Int) {
@@ -376,6 +387,7 @@ class Arena(val cfg: ArenaConfig, tactics: List<TacticEntry>, val brain: Brain? 
         s.ateThisTick = true
         s.score++
         if (s.score > s.maxScore) s.maxScore = s.score
+        if (s.score > s.episodeBest) s.episodeBest = s.score
         s.lifeFoods++
         s.foodsEaten++
         s.turnsWithoutFood = 0

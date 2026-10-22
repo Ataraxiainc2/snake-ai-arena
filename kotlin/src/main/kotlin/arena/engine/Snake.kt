@@ -33,6 +33,9 @@ class Snake(val id: Int, val name: String, val kind: Kind, val entry: TacticEntr
     var dir = 0
     var score = 0
     var maxScore = 0
+
+    /** The best score in this episode, over every life in it: the order of the in-game standings. */
+    var episodeBest = 0
     var alive = true
     var lastTail = 0
     var ateThisTick = false

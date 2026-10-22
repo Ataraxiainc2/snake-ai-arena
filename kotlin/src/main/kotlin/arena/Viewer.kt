@@ -167,8 +167,8 @@ object Viewer {
                 a.width, a.height, a.frame, a.episode, Array(n) { a.snakes[it].body.toArray() },
                 BooleanArray(n) { val s = a.snakes[it]; blink && (s.warning || a.frame < s.flashUntil) },
                 a.foodList(),
-                a.snakes.sortedByDescending { it.rankingScore }.take(20).mapIndexed { i, s ->
-                    Row(i + 1, s.name, s.score, s.rankingScore, s.bestScore, s.id)
+                a.episodeStandings().take(20).mapIndexed { i, s ->
+                    Row(i + 1, s.name, s.episodeBest, s.rankingScore, s.bestScore, s.id)
                 },
                 colors, a.snakes.firstOrNull { it.kind == Kind.HUMAN }?.body?.head ?: -1, stats, episodeEnd,
                 a.snakes.firstOrNull { it.kind == Kind.HUMAN }?.dir ?: 0,
@@ -371,7 +371,7 @@ object Viewer {
         g.draw(java.awt.geom.Line2D.Double(x + 0.5 + dx * 1.5, y + 0.5 + dy * 1.5, x + 0.5 + dx * 6, y + 0.5 + dy * 6))
     }
 
-    /** The ranking columns (rank, name, score now, ranking score); returns its width. */
+    /** The standings of this episode (place, name, best score in the episode, all-time ranking score); returns its width. */
     private fun table(g: Graphics2D, fm: FontMetrics, rows: List<Row>, colors: Array<Color>, x: Int, y0: Int, measureOnly: Boolean = false, best: Boolean = false): Int {
         val w0 = fm.stringWidth("00 ")
         val w1 = rows.maxOfOrNull { fm.stringWidth(it.name) } ?: 0
