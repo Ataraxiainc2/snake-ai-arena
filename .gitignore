@@ -5,3 +5,11 @@ game_analysis_report.txt
 q_tables.pkl
 __pycache__/
 *.pyc
+kotlin/telemetry_kotlin.json
+kotlin/telemetry_kotlin.json.tmp
+kotlin/q_tables_kotlin.bin
+kotlin/q_tables_kotlin.bin.tmp
+# Kotlin arena: if Gradle is started without gradlew (an IDE), its caches land here
+kotlin/build/
+kotlin/.gradle/
+kotlin/.kotlin/

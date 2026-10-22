@@ -1,0 +1,102 @@
+SNAKE BATTLE ROYALE AI ARENA - KOTLIN RULES
+Deliver the strongest Snake agent as ONE self-contained Kotlin file: kotlin/tactics/Provider-Model_Name.kt.
+The file name is your name in the game and on the leaderboard.
+It is the game of SNAKES.py (the Python arena) with up to 400 snakes at once, played on the organizer's PC (kotlin/)
+and on an Android phone (Galaxy S25 Ultra).
+
+1. DELIVERY
+ - Web chat: answer with only the full code in one ```kotlin``` block.
+ - Disk agents: you may READ every file of the arena folder (the folder holding SNAKES.py) and all its subfolders,
+   and nothing outside it. Write ONLY your own file kotlin/tactics/<your name>.kt; never modify, create or delete
+   anything else. Run nothing: no game, gradlew, java, python, check or test of any kind (the arena logs which
+   program starts it; breaking this = disqualified).
+ - Public entries: a GitHub pull request that adds only your file and names the model and tool that wrote it.
+   A GitHub check audits, compiles and times it.
+ - Max 4 minutes from each request to delivering: the first entry and every later request to improve it.
+   No test runs of your own.
+ - New players: kotlin/tactics/ may already hold an empty file with your name (empty files do not play): write your
+   code into it. A new entry joins at the next game; the arena starts one within 5 minutes of a new file.
+ - Existing players: improve only your own file, and only when asked (4 minutes each time). A changed file is
+   audited and reloaded within 5 minutes, keeping your snake's body and score; if it fails, the previous version
+   keeps playing.
+ - Copying a rival's code is allowed (not recommended); if you do, make it your own strategy and improve it to win.
+ - Results: kotlin/telemetry_kotlin.json, refreshed every 5 minutes; its "readme" explains every value and
+   your entry is llm.<file name>. The leaderboard keeps each snake's best score across games.
+
+2. INTERFACE (Kotlin 2.x; no package line: the arena adds the package and the API below)
+   class Tactic : SnakeTactic {
+       override fun decide(p: Perception): Int { ... }   // Move.UP, Move.DOWN, Move.LEFT or Move.RIGHT,
+   }                                                     // one of p.validMoves
+ - The arena creates one Tactic() per snake per game. Its fields may keep state between turns of that game;
+   nothing is kept between games.
+ - Snakes decide at the same time on different threads: no top-level var, no var in an object or companion object.
+ - Imports allowed: kotlin.math.*, kotlin.random.*, kotlin.collections.* (the default Kotlin imports need none).
+
+3. THE ARENA'S API (already provided; do not declare it)
+   object Move { const val UP = 0; const val DOWN = 1; const val LEFT = 2; const val RIGHT = 3
+                 val DX: IntArray /* 0, 0, -1, 1 */; val DY: IntArray /* -1, 1, 0, 0 */ }   // y grows downwards
+   class Enemy { val id: Int; val score: Int; val direction: Int; val body: IntArray }      // body: head first
+   class Perception {
+       val width: Int; val height: Int     // the board in cells (192 x 108 on the PC; up to 390 x 180 on the phone)
+       val turn: Long
+       val myId: Int; val myScore: Int
+       val myDirection: Int                // your last move (at birth, the random direction you start with)
+       val myBody: IntArray                // your cells, head first. cell = y * width + x  (x = cell % width)
+       val foods: IntArray                 // cells
+       val enemies: Array<Enemy>           // every other snake
+       val bodies: ByteArray               // per cell: how many body cells of all snakes (you included) lie there
+       val selfCollision: Boolean; val selfCollisionWarning: Boolean; val wallCollision: Boolean
+       val enemyCollision: Boolean; val toroidal: Boolean
+       val validMoves: IntArray            // the moves that do not reverse into your neck (all 4 at length 1)
+       val turnsWithoutFood: Int; val starvationTurns: Int
+       val previousReward: Float           // +15 ate, -15 died, +1 closer to the nearest food, -1.2 farther
+       val diedLastStep: Boolean
+       val stateVector16: FloatArray       // the 16 values of SNAKES.py's state_vector_16
+       fun nanosLeft(): Long               // what is left of this call's time budget
+       fun foodRivalDistance(i: Int): Int  // foods[i]: moves from the nearest enemy head on an empty board
+                                           // (Manhattan, the short way round while toroidal; Int.MAX_VALUE if none)
+       val marks: IntArray                 // scratch for searches: one Int per cell, shared by the snakes deciding
+       val queue: IntArray                 // on the same thread; queue has width * height + 1 cells
+       fun newMark(): Int                  // a value no cell of marks holds yet (mark one search's cells with it)
+   }
+ - Everything in Perception is valid only during decide() and read-only except marks and queue: never modify another
+   array, never keep one (copy what you need). bodies and foodRivalDistance are computed once per turn for all snakes.
+
+4. LIMITS
+ - Time: each call gets a budget (nanosLeft() at entry): 100 ms / number of snakes, between 0.1 and 15 ms
+   (20 snakes: 5 ms; 100: 1 ms; 400: 0.25 ms). Returning after twice the budget, an exception, or a move not in
+   validMoves = a random valid move.
+ - Memory: up to 400 copies of your Tactic exist at once on the phone: keep each under 256 KB (one IntArray of the
+   390 x 180 board is 281 KB; marks and queue are there so you need none of your own).
+ - Code size: Rank = max_score * (1 - 0.05*log2(your_chars / shortest_chars)), among the .kt files.
+ - Anti-cheat (audited before loading, violation = disqualified): no package line; no imports outside section 2;
+   no java., javax., android., kotlinx., dalvik. names; no System, Runtime, Thread, ThreadLocal, Process,
+   ProcessBuilder, ClassLoader, Class, reflection (::class, .javaClass, KClass), Unsafe; no println/print/readLine;
+   no top-level or object/companion var; no external, @JvmStatic, @Volatile, synchronized; no file, network or clock
+   access (time only through nanosLeft()). The compiled code may only use your classes, this API, the Kotlin
+   standard library (not kotlin.io, .system, .concurrent, .time, .reflect) and plain java.lang/java.util classes.
+
+5. PHYSICS (positions are cells here, pixels in SNAKES.py)
+ - Food: move your head onto a food cell to eat it: +1 score, +1 length.
+ - Death: food on every 2nd body cell inside the board; respawn at length 1, score 0.
+ - Score phases: <100 wrap-around, nothing kills. >=100 after a 600-turn warning your own body kills.
+   >=200 walls kill, no wrap. >=300 every other snake's body kills; head-on kills everyone there with >=300.
+ - The move that brings you to 300 is already checked at 300.
+ - Tick: all choose -> all move (wrap if score before the move <200) -> eat (the tail cell is re-added;
+   ties go to the first snake in the list) -> deaths checked with the score after eating.
+ - A tail cell that is leaving is safe to enter, except the turn after that snake ate.
+ - Starvation: 1500 turns without eating = death at any score.
+ - Snakes = Kotlin tactics + learning DQN snakes (and the human player, if any); foods = 0.8 x snakes (min 8).
+ - An episode ends when every snake has died once; then all respawn and the next episode starts.
+
+6. SKELETON (valid, not strong)
+   class Tactic : SnakeTactic {
+       override fun decide(p: Perception): Int {
+           val h = p.myBody[0]; val x = h % p.width; val y = h / p.width
+           for (m in p.validMoves) {
+               val nx = (x + Move.DX[m] + p.width) % p.width; val ny = (y + Move.DY[m] + p.height) % p.height
+               if (p.bodies[ny * p.width + nx].toInt() == 0) return m
+           }
+           return p.validMoves[0]
+       }
+   }

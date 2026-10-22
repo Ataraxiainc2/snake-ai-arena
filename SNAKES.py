@@ -2432,7 +2432,12 @@ def run_headless_evaluation(lr, hidden_size, gamma, imitation_rate, episodes=2, 
 # ==============================================================================
 # UNATTENDED TOURNAMENT MODE (no window, capped speed, low priority) + INTEGRITY MONITOR
 # ==============================================================================
-GAME_OUTPUT_FILES = {"game_analysis_report.txt", TELEMETRY_FILE, "q_tables.pkl", TELEMETRY_FILE + ".tmp"}
+GAME_OUTPUT_FILES = {"game_analysis_report.txt", TELEMETRY_FILE, "q_tables.pkl", TELEMETRY_FILE + ".tmp",
+                     # written by the Kotlin arena (kotlin/, same game for kotlin/tactics/*.kt)
+                     "kotlin/telemetry_kotlin.json", "kotlin/telemetry_kotlin.json.tmp",
+                     "kotlin/q_tables_kotlin.bin", "kotlin/q_tables_kotlin.bin.tmp"}
+# Build output of the Kotlin arena (Gradle, compiled tactics): not watched
+UNWATCHED_DIRS = {"kotlin/build", "kotlin/.gradle", "kotlin/.kotlin"}
 
 
 class IntegrityMonitor:
@@ -2457,7 +2462,9 @@ class IntegrityMonitor:
     def _scan(self):
         found = {}
         for dirpath, dirnames, filenames in os.walk(self.root):
-            dirnames[:] = [d for d in dirnames if d not in ("__pycache__", ".git")]  # .git is the organizer's repo
+            rel_dir = os.path.relpath(dirpath, self.root).replace(os.sep, "/")
+            dirnames[:] = [d for d in dirnames if d not in ("__pycache__", ".git")  # .git is the organizer's repo
+                           and (d if rel_dir == "." else rel_dir + "/" + d) not in UNWATCHED_DIRS]
             for name in filenames:
                 path = os.path.join(dirpath, name)
                 rel = os.path.relpath(path, self.root).replace(os.sep, "/")
@@ -2465,7 +2472,7 @@ class IntegrityMonitor:
                     size = os.path.getsize(path)
                 except OSError:
                     continue
-                digest = self._hash(path) if (rel == "SNAKES.py" or (name.endswith(".py") and size > 0)) else None
+                digest = self._hash(path) if (rel == "SNAKES.py" or (name.endswith((".py", ".kt")) and size > 0)) else None
                 found[rel] = (size, digest)
         return found
 
@@ -2478,6 +2485,8 @@ class IntegrityMonitor:
         for dirpath, dirnames, _ in os.walk(self.root):
             if ".git" in dirnames:
                 dirnames.remove(".git")
+            rel_dir = os.path.relpath(dirpath, self.root).replace(os.sep, "/")
+            dirnames[:] = [d for d in dirnames if (d if rel_dir == "." else rel_dir + "/" + d) not in UNWATCHED_DIRS]
             for d in list(dirnames):
                 if d == "__pycache__":
                     cache = os.path.join(dirpath, d)
@@ -2497,7 +2506,8 @@ class IntegrityMonitor:
                 continue
             old = self.files.get(rel)
             if old is None:
-                if rel.startswith(TACTICS_FOLDER + "/") and rel.endswith(".py"):
+                if (rel.startswith(TACTICS_FOLDER + "/") and rel.endswith(".py")) or (
+                        rel.startswith("kotlin/tactics/") and rel.endswith(".kt")):
                     self._log("new_tactic_file" if size else "new_empty_template", rel, f"{size} bytes")
                 else:
                     self._log("ALERT_UNEXPECTED_FILE", rel, f"{size} bytes")

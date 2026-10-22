@@ -3,7 +3,7 @@ name: Check tactic
 on:
   pull_request:
   push:
-    paths: ["tacticas/**", "SNAKES.py"]
+    paths: ["tacticas/**", "SNAKES.py", "kotlin/**"]
 
 permissions:
   contents: read
@@ -11,7 +11,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,29 +28,62 @@ jobs:
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           THIS_REPO: ${{ github.repository }}
         run: |
-          if [ "$EVENT" != "pull_request" ]; then echo "list=" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ "$EVENT" != "pull_request" ]; then
+            # a push checks everything
+            echo "py=all" >> "$GITHUB_OUTPUT"; echo "kt=all" >> "$GITHUB_OUTPUT"; exit 0
+          fi
           changed=$(git diff --name-only --diff-filter=AMR "origin/$BASE...HEAD")
           printf 'Changed files:\n%s\n' "$changed"
           if [ "$HEAD_REPO" != "$THIS_REPO" ]; then
-            bad=$(printf '%s\n' "$changed" | grep -v -E '^tacticas/[A-Za-z0-9._-]+\.py$' || true)
+            bad=$(printf '%s\n' "$changed" | grep -v -E '^(tacticas/[A-Za-z0-9._-]+\.py|kotlin/tactics/[A-Za-z0-9._-]+\.kt)$' || true)
             if [ -n "$bad" ]; then
-              echo "::error::A submission may only add or change one tacticas/Provider-Model_Name.py file (letters, digits, . _ - only)."
+              echo "::error::A submission may only add or change tacticas/Provider-Model_Name.py or kotlin/tactics/Provider-Model_Name.kt (letters, digits, . _ - only)."
               exit 1
             fi
           fi
-          list=$(printf '%s\n' "$changed" | grep -E '^tacticas/[A-Za-z0-9._-]+\.py$' | tr '\n' ' ' || true)
-          echo "list=$list" >> "$GITHUB_OUTPUT"
+          py=$(printf '%s\n' "$changed" | grep -E '^tacticas/[A-Za-z0-9._-]+\.py$' | tr '\n' ' ' || true)
+          kt=$(printf '%s\n' "$changed" | grep -E '^kotlin/tactics/[A-Za-z0-9._-]+\.kt$' | tr '\n' ' ' || true)
+          if printf '%s\n' "$changed" | grep -v '^kotlin/tactics/' | grep -q -E '^(SNAKES\.py|kotlin/)'; then
+            [ -z "$py" ] && py=all; [ -z "$kt" ] && kt=all
+          fi
+          echo "py=$py" >> "$GITHUB_OUTPUT"
+          echo "kt=$kt" >> "$GITHUB_OUTPUT"
       - name: Install torch (only if a checked tactic imports it)
+        if: steps.files.outputs.py != ''
         shell: bash
         env:
-          FILES: ${{ steps.files.outputs.list }}
+          FILES: ${{ steps.files.outputs.py }}
         run: |
-          files=${FILES:-$(ls tacticas/*.py | tr '\n' ' ')}
-          if grep -l -E '^\s*(import|from)\s+torch' $files >/dev/null 2>&1; then
+          [ "$FILES" = all ] && FILES=$(ls tacticas/*.py | tr '\n' ' ')
+          if grep -l -E '^\s*(import|from)\s+torch' $FILES >/dev/null 2>&1; then
             pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
           fi
-      - name: Anti-cheat audit and timing battery
+      - name: Anti-cheat audit and timing battery (Python)
+        if: steps.files.outputs.py != ''
         shell: bash
         env:
-          FILES: ${{ steps.files.outputs.list }}
-        run: python -I SNAKES.py --check $FILES
+          FILES: ${{ steps.files.outputs.py }}
+        run: |
+          [ "$FILES" = all ] && FILES=""
+          python -I SNAKES.py --check $FILES
+      - uses: actions/setup-java@v4
+        if: steps.files.outputs.kt != ''
+        with:
+          distribution: zulu
+          java-version: "27"
+      - name: Build the Kotlin arena
+        if: steps.files.outputs.kt != ''
+        working-directory: kotlin
+        run: ./gradlew --no-daemon -q installDist
+      - name: Kotlin engine tests (identical to SNAKES.py, audit)
+        if: steps.files.outputs.kt == 'all'
+        working-directory: kotlin
+        run: ./gradlew --no-daemon -q test
+      - name: Anti-cheat audit, compile and timing battery (Kotlin)
+        if: steps.files.outputs.kt != ''
+        shell: bash
+        env:
+          FILES: ${{ steps.files.outputs.kt }}
+        run: |
+          [ "$FILES" = all ] && FILES=""
+          "$HOME/.snake-arena/build/install/snake-arena-kotlin/bin/snake-arena-kotlin" check $FILES
