@@ -45,6 +45,14 @@ object Launch {
         return null
     }
 
+    /**
+     * The game was ended from outside (Ctrl+C, the terminal or the Gradle run closed, the process terminated: exit code
+     * 130 or 143): logged, so an unexpected end can be traced to the time it happened. The game saves before exiting.
+     */
+    fun stoppedFromOutside(cmd: String) {
+        runCatching { File(WORK, "launches.log").appendText("${Telemetry.now()} [STOP] $cmd ended from outside the game; saving\n") }
+    }
+
     /** The [START] line of this game, for the telemetry's integrity list. */
     var startLine: String? = null
         private set

@@ -117,6 +117,9 @@ object Runner {
     @Volatile
     private var stopping = false
 
+    /** The run ended by itself: the shutdown hook has nothing to do. */
+    @Volatile private var finished = false
+
     fun run(o: Options, root: File): Int {
         val hours = o.double("hours", 0.0)
         val roundMinutes = o.double("round-minutes", 0.0)
@@ -125,7 +128,9 @@ object Runner {
         val end = if (hours > 0) System.currentTimeMillis() + (hours * 3_600_000).toLong() else Long.MAX_VALUE
         val main = Thread.currentThread()
         Runtime.getRuntime().addShutdownHook(Thread {
+            if (finished) return@Thread
             stopping = true
+            Launch.stoppedFromOutside("run")
             main.join(15_000)
         })
         var round = 0
@@ -161,6 +166,7 @@ object Runner {
             }
             println("[KOTLIN ARENA] game $round done after ${arena.frame} turns: ${game.top(3)}")
         }
+        finished = true
         println("[KOTLIN ARENA] finished.")
         return 0
     }

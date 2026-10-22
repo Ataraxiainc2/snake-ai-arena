@@ -59,6 +59,15 @@ object Viewer {
         var round = 1
         var game = Session(o, root, round, events, human = o.flag("human"))
         var arena = game.arena
+        // ended from outside (Ctrl+C, the Gradle run or the terminal closed, the process terminated): the game loop
+        // stops and its finally saves telemetry and learning, as `run` does; Esc ends it from inside (running = false)
+        val main = Thread.currentThread()
+        Runtime.getRuntime().addShutdownHook(Thread {
+            if (!running) return@Thread
+            running = false
+            Launch.stoppedFromOutside("view")
+            main.join(15_000)
+        })
         val fullScreen = !o.flag("window")
         val pacer = Pacer(o.int("fps", 15))
         val panel = object : JPanel() {
