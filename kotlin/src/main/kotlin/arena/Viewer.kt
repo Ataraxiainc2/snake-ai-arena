@@ -4,6 +4,7 @@ import arena.engine.Arena
 import arena.engine.GameEvent
 import arena.engine.Kind
 import arena.engine.Palette
+import arena.engine.Standings
 import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.Dimension
@@ -16,6 +17,7 @@ import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
+import java.awt.Rectangle
 import java.awt.geom.Rectangle2D
 import java.io.File
 import java.lang.management.ManagementFactory
@@ -29,16 +31,16 @@ import javax.swing.SwingUtilities
  * `view`: the live arena full screen (Swing, no extra libraries; --window for a window). Arrow keys steer the human
  * snake (--human), + and - change the speed (0 = as fast as possible), P pauses, Esc quits; everything is saved as
  * in `run`. As SNAKES.py's window: messages at the top centre (top 3 every 60 s, a new leader, the best learner every
- * 30 s, the record to 10 points, rule warnings, deaths), the ranking (here at the bottom centre, as a watermark), a
- * head flashing red while a rule changes for its snake, and a pause at the end of each episode (Enter goes on, or it
- * goes on by itself after 60 s). The game runs on its own thread; the window paints a copy taken after each turn.
+ * 30 s, the record to 10 points, rule warnings, deaths), every snake's standings under the board ([Standings], the
+ * same table as the phone's), a head flashing red while a rule changes for its snake, and a pause at the end of each
+ * episode (Enter goes on, or it goes on by itself after 60 s). The game runs on its own thread; the window paints a
+ * copy taken after each turn.
  */
 object Viewer {
-    private class Row(val rank: Int, val name: String, val score: Int, val ranking: Double, val best: Int, val snake: Int)
     private class Message(val text: String, val color: Color, val until: Long)
     private class Frame(
         val w: Int, val h: Int, val turn: Long, val episode: Int, val bodies: Array<IntArray>, val flash: BooleanArray,
-        val foods: IntArray, val ranking: List<Row>, val colors: Array<Color>, val humanHead: Int, val stats: String,
+        val foods: IntArray, val ranking: List<Standings.Row>, val colors: Array<Color>, val humanHead: Int, val stats: String,
         val episodeEnd: String?,
         /** The human's direction (a Move) and the hold on screen: the 3-2-1 number, or "" while only marking the player. */
         val humanDir: Int, val hold: String?,
@@ -159,23 +161,9 @@ object Viewer {
         val watch = Watch()
 
         fun publish(episodeEnd: String? = null) {
-            val a = arena
-            val n = a.snakes.size
-            val now = System.currentTimeMillis()
-            val blink = now / 400 % 2 == 0L
-            frame = Frame(
-                a.width, a.height, a.frame, a.episode, Array(n) { a.snakes[it].body.toArray() },
-                BooleanArray(n) { val s = a.snakes[it]; blink && (s.warning || a.frame < s.flashUntil) },
-                a.foodList(),
-                a.episodeStandings().take(20).mapIndexed { i, s ->
-                    Row(i + 1, s.name, s.episodeBest, s.rankingScore, s.bestScore, s.id)
-                },
-                colors, a.snakes.firstOrNull { it.kind == Kind.HUMAN }?.body?.head ?: -1, stats, episodeEnd,
-                a.snakes.firstOrNull { it.kind == Kind.HUMAN }?.dir ?: 0,
-                (holdUntil - now).takeIf { it > 0 }?.let { left -> if (holdCountdown) "${(left + 999) / 1000}" else "" },
-            )
+            frame = frameOf(arena, colors, stats, episodeEnd)
             panel.repaint()
-            lastPaint = now
+            lastPaint = System.currentTimeMillis()
         }
 
         fun attach(a: Arena) {
@@ -250,6 +238,31 @@ object Viewer {
         return 0
     }
 
+    /** What the window paints, taken from [a] on the game thread. */
+    private fun frameOf(a: Arena, colors: Array<Color>, stats: String, episodeEnd: String?): Frame {
+        val n = a.snakes.size
+        val now = System.currentTimeMillis()
+        val blink = now / 400 % 2 == 0L
+        return Frame(
+            a.width, a.height, a.frame, a.episode, Array(n) { a.snakes[it].body.toArray() },
+            BooleanArray(n) { val s = a.snakes[it]; blink && (s.warning || a.frame < s.flashUntil) },
+            a.foodList(),
+            Standings.of(a),
+            colors, a.snakes.firstOrNull { it.kind == Kind.HUMAN }?.body?.head ?: -1, stats, episodeEnd,
+            a.snakes.firstOrNull { it.kind == Kind.HUMAN }?.dir ?: 0,
+            (holdUntil - now).takeIf { it > 0 }?.let { left -> if (holdCountdown) "${(left + 999) / 1000}" else "" },
+        )
+    }
+
+    /** The screen as the window would paint [a] on a [width] x [height] screen (tests and screenshots). */
+    internal fun render(a: Arena, width: Int, height: Int, episodeEnd: String? = null): java.awt.image.BufferedImage {
+        val image = java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_RGB)
+        val g = image.createGraphics()
+        paint(g, frameOf(a, colorsOf(a), "", episodeEnd), width, height)
+        g.dispose()
+        return image
+    }
+
     /** SNAKES.py's centre messages, from the arena's events and from the standings. */
     private class Watch {
         private var leader = -1
@@ -303,10 +316,15 @@ object Viewer {
     }
 
     private fun paint(g: Graphics2D, f: Frame, width: Int, height: Int) {
-        // the board on the whole screen: the same cells as on the phone (195 x 90), stretched to the screen's shape
-        // (3840 x 2160: 19.7 x 24 px a cell), so a 16:9 monitor has no black bands
+        // square cells, the board (the phone's 195 x 90) as large as the screen allows, at the top: on a 16:9 screen
+        // it takes the whole width (3840 x 2160: 19.7 px a cell, 1772 px high) and the standings take the band below
         val board = g.transform
-        g.scale(width.toDouble() / f.w, height.toDouble() / f.h)
+        val cell = minOf(width.toDouble() / f.w, height.toDouble() / f.h)
+        val boardH = (cell * f.h).toInt()
+        g.translate((width - cell * f.w) / 2, 0.0)
+        g.scale(cell, cell)
+        g.color = Color(24, 24, 24) // the board's edge
+        g.draw(Rectangle2D.Double(0.0, 0.0, f.w.toDouble(), f.h.toDouble()))
         g.color = Color.WHITE
         for (c in f.foods) g.fillRect(c % f.w, c / f.w, 1, 1)
         val colors = f.colors
@@ -344,11 +362,13 @@ object Viewer {
             shadowed(g, m.text, (width - mm.stringWidth(m.text)) / 2, y, m.color, 200)
             y += mm.height
         }
-        // bottom centre: the ranking as a watermark, each row in its snake's colour
-        g.font = font.deriveFont(fs.toFloat())
-        val rows = f.ranking
-        val tableW = table(g, fm, rows, f.colors, 0, 0, measureOnly = true)
-        table(g, fm, rows, f.colors, (width - tableW) / 2, height - fs - fm.height * rows.size + fm.ascent)
+        // every snake's standings, each row in its snake's colour: in the band under the board, or over the board's
+        // bottom as a watermark when the screen leaves no band
+        val band = height - boardH
+        if (f.episodeEnd == null) {
+            if (band >= fm.height * MIN_BAND_LINES) table(g, f, Rectangle(0, boardH + fs / 2, width, band - fs / 2), fs * 2, 210)
+            else table(g, f, Rectangle(0, height * 2 / 3, width, height / 3), fs, 150)
+        }
         f.episodeEnd?.let { episodeEnd(g, f, it, width, height, fs) }
         f.hold?.takeIf { it.isNotEmpty() }?.let { n -> // the 3-2-1, large in the middle
             g.font = font.deriveFont(height / 5f)
@@ -368,37 +388,56 @@ object Viewer {
         g.draw(java.awt.geom.Line2D.Double(x + 0.5 + dx * 1.5, y + 0.5 + dy * 1.5, x + 0.5 + dx * 6, y + 0.5 + dy * 6))
     }
 
-    /** The standings of this episode (place, name, best score in the episode, all-time ranking score); returns its width. */
-    private fun table(g: Graphics2D, fm: FontMetrics, rows: List<Row>, colors: Array<Color>, x: Int, y0: Int, measureOnly: Boolean = false, best: Boolean = false): Int {
-        val w0 = fm.stringWidth("00 ")
-        val w1 = rows.maxOfOrNull { fm.stringWidth(it.name) } ?: 0
-        val w2 = fm.stringWidth(" 0000")
-        val w3 = fm.stringWidth("  000.0")
-        val w4 = if (best) fm.stringWidth("  max 0000") else 0
-        if (measureOnly) return w0 + w1 + w2 + w3 + w4
-        for ((k, r) in rows.withIndex()) {
-            val y = y0 + fm.height * k
-            val c = colors[r.snake]
-            fun right(t: String, end: Int) = shadowed(g, t, end - fm.stringWidth(t), y, c, 170)
-            right("${r.rank}", x + w0 - fm.stringWidth(" "))
-            shadowed(g, r.name, x + w0, y, c, 170)
-            right("${r.score}", x + w0 + w1 + w2)
-            right(String.format(Locale.ROOT, "%.1f", r.ranking), x + w0 + w1 + w2 + w3)
-            if (best) right("max ${r.best}", x + w0 + w1 + w2 + w3 + w4)
+    /**
+     * Every snake's standings ([Standings]) inside [area], centred, as large as they fit: the font shrinks from [size]
+     * to [MIN_FONT], in as many columns as needed; beyond that the last rows are left out, and said so.
+     */
+    private fun table(g: Graphics2D, f: Frame, area: Rectangle, size: Int, alpha: Int) {
+        val rows = f.ranking
+        val nameWidth = (rows.maxOfOrNull { it.name.length } ?: 4).coerceIn(4, MAX_NAME)
+        val header = Standings.header(nameWidth)
+        var fs = size
+        while (true) {
+            g.font = font.deriveFont(fs.toFloat())
+            val fm = g.fontMetrics
+            val perColumn = (area.height - fm.descent) / fm.height - 1
+            val colW = fm.stringWidth(header) + fm.stringWidth("   ")
+            val columns = maxOf(1, area.width / colW)
+            if (perColumn >= 1 && (rows.size <= perColumn * columns || fs <= MIN_FONT)) {
+                val used = minOf(columns, (rows.size + perColumn - 1) / perColumn)
+                val shown = minOf(rows.size, perColumn * used)
+                val x0 = area.x + (area.width - used * colW) / 2
+                for (c in 0 until used) {
+                    val x = x0 + c * colW
+                    var y = area.y + fm.ascent
+                    shadowed(g, header, x, y, Color.WHITE, alpha)
+                    for (r in rows.subList(c * perColumn, minOf(shown, (c + 1) * perColumn))) {
+                        y += fm.height
+                        val line = Standings.line(r, nameWidth)
+                        shadowed(g, line, x, y, f.colors[r.snake], alpha)
+                    }
+                }
+                if (shown < rows.size) {
+                    val more = "+${rows.size - shown} more"
+                    shadowed(g, more, area.x + area.width - fm.stringWidth(more) - fs, area.y + area.height - fm.descent, Color.WHITE, alpha)
+                }
+                return
+            }
+            fs--
         }
-        return w0 + w1 + w2 + w3 + w4
     }
 
+    /** Every snake died once: a band across the screen with the message and every snake's standings. */
     private fun episodeEnd(g: Graphics2D, f: Frame, text: String, width: Int, height: Int, fs: Int) {
-        g.font = font.deriveFont(fs * 1.4f)
+        val top = height / 8
+        val boxH = height * 3 / 4
+        g.color = Color(0, 0, 0, 215)
+        g.fillRect(0, top, width, boxH)
+        g.font = font.deriveFont(fs * 1.5f)
         val fm = g.fontMetrics
-        val tableW = table(g, fm, f.ranking, f.colors, 0, 0, measureOnly = true, best = true)
-        val boxH = fm.height * (f.ranking.size + 3) + 2 * fs
-        val by = (height - boxH) / 2
-        g.color = Color(0, 0, 0, 210) // a band across the screen behind the standings
-        g.fillRect(0, by, width, boxH)
-        shadowed(g, text, (width - fm.stringWidth(text)) / 2, by + fs + fm.ascent, Color.WHITE, 255)
-        table(g, fm, f.ranking, f.colors, (width - tableW) / 2, by + fs + fm.ascent + 2 * fm.height, best = true)
+        shadowed(g, text, (width - fm.stringWidth(text)) / 2, top + fs + fm.ascent, Color.WHITE, 255)
+        val tableTop = top + fs + 2 * fm.height
+        table(g, f, Rectangle(0, tableTop, width, top + boxH - tableTop - fs), fs * 2, 255)
     }
 
     private fun shadowed(g: Graphics2D, t: String, x: Int, y: Int, c: Color, alpha: Int) {
@@ -409,6 +448,9 @@ object Viewer {
     }
 
     private val ALERT = Color(255, 50, 50)
+    private const val MIN_BAND_LINES = 6
+    private const val MIN_FONT = 8
+    private const val MAX_NAME = 34
 
     /** IBM Plex Mono Medium (Google Fonts, SIL Open Font License; resources/fonts/OFL.txt): small and legible. */
     private val font: Font = runCatching {

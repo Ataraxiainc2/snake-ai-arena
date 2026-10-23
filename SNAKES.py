@@ -293,7 +293,7 @@ STRINGS = {
         "death_starvation": "starvation (no food for {turns} turns)",
         "death_enemy": "collision with {other}",
         "ep_end_title": "End of Episode {ep}",
-        "ep_end_subtitle": "Ranking by Adjusted Score (Max Score x Code-Size Factor)",
+        "ep_end_subtitle": "Standings of this episode (ep = best in it, * = died in it; best and rank = all-time, rank = best x code-size factor)",
         "ep_end_prompt": "Press ENTER to start next episode | Press I to change language | ESC to exit",
         "graph_title": "Mean Max Score: {val:.1f} pts",
         "cli_header": "SNAKE AI ARENA & RL LAB (Fair LLM Tournament + Hybrid DQN)",
@@ -330,7 +330,7 @@ STRINGS = {
         "death_starvation": "inanición (sin comer {turns} turnos)",
         "death_enemy": "colisión con {other}",
         "ep_end_title": "Fin del Episodio {ep}",
-        "ep_end_subtitle": "Ranking por Puntaje Ajustado (Máximo x Factor de Tamaño de Código)",
+        "ep_end_subtitle": "Posiciones de este episodio (ep = mejor en él, * = murió en él; best y rank = histórico, rank = máximo x factor de código)",
         "ep_end_prompt": "Presiona ENTER para el siguiente episodio | Tecla I para cambiar idioma | ESC para salir",
         "graph_title": "Puntaje Máx Medio: {val:.1f} pts",
         "cli_header": "ARENA DE IA SNAKE Y LABORATORIO RL (Torneo LLM + DQN Híbrido)",
@@ -367,7 +367,7 @@ STRINGS = {
         "death_starvation": "inanição (sem comer {turns} turnos)",
         "death_enemy": "colisão com {other}",
         "ep_end_title": "Fim do Episódio {ep}",
-        "ep_end_subtitle": "Ranking por Pontuação Ajustada (Máxima x Fator de Tamanho de Código)",
+        "ep_end_subtitle": "Posições deste episódio (ep = melhor nele, * = morreu nele; best e rank = histórico, rank = máxima x fator de código)",
         "ep_end_prompt": "Pressione ENTER para o próximo episódio | Tecla I para mudar idioma | ESC para sair",
         "graph_title": "Pontuação Máx Média: {val:.1f} pts",
         "cli_header": "ARENA DE IA SNAKE & LABORATÓRIO RL (Torneio LLM + DQN Híbrido)",
@@ -807,6 +807,8 @@ class Snake:
         self.color = color
         self.puntaje = 0.0
         self.max_score_achieved = 0.0
+        self.episode_best = 0.0  # best score in this episode, over every life in it (the standings' order)
+        self.foods_eaten = 0  # foods in this game
         self.viva = True
         self.ultimo_segmento = initial_pos
         self.death_reason = None
@@ -1961,6 +1963,9 @@ class Game:
                     s.puntaje += 1.0
                     if s.puntaje > s.max_score_achieved:
                         s.max_score_achieved = s.puntaje
+                    if s.puntaje > s.episode_best:
+                        s.episode_best = s.puntaje
+                    s.foods_eaten += 1
                     s.life_foods += 1
                     s.turns_without_food = 0
                     for milestone in (10, 100, 200, 300):
@@ -2133,6 +2138,7 @@ class Game:
         for s in self.snakes:
             s.respawn()
             s.puntaje = 0.0
+            s.episode_best = 0.0
         self.game_state = "PLAYING"
         self.hold(countdown=True)
 
@@ -2298,26 +2304,12 @@ class Game:
             self.font_instr, WHITE, (10, 30), alpha=240
         )
 
-        y_offset = 55
-        # Every snake is listed (the human player too), each line in that snake's own color.
-        sorted_snakes = sorted(self.snakes, key=lambda s: (-s.puntaje, -s.max_score_achieved))
-        for idx, s in enumerate(sorted_snakes[:25]):
-            pts = f"Pts: {s.puntaje:.0f} (Max:{max(s.max_score_achieved, s.puntaje):.0f})"
-            if s.es_usuario:
-                info = f"#{idx+1:02d} {s.nombre} [YOU] | {pts}"
-            elif s.external_tactic:
-                info = f"#{idx+1:02d} {s.nombre} [LLM] | {pts} | Rank: {s.ranking_score():.1f}"
-            else:
-                info = f"#{idx+1:02d} {s.nombre} [DQN] | {pts} | Eps: {s.epsilon:.2f} | {s.last_learning_message}"
-            draw_text(self.ventana, info, self.font_info_alive, s.original_color, (10, y_offset), alpha=215)
-            y_offset += 19
-
         current_time = time.time()
-        y_offset_death = self.ALTO - 55
+        y_offset_death = 55
         for msg, col, end_time in self.death_messages[:]:
             if current_time < end_time:
                 draw_text(self.ventana, msg, self.font_death, col, (10, y_offset_death), alpha=240)
-                y_offset_death -= 22
+                y_offset_death += 22
             else:
                 self.death_messages.remove((msg, col, end_time))
 
@@ -2331,10 +2323,13 @@ class Game:
             y = head_y + BLOCK_SIZE // 2 - rank_text.get_height() // 2
             self.ventana.blit(rank_text, (x, y))
 
+        # Every snake's standings at the bottom centre, each row in its snake's own colour (the Kotlin arena's table).
+        self.draw_standings(pygame.Rect(0, self.ALTO * 3 // 5, self.ANCHO, self.ALTO * 2 // 5 - 6), 190)
+
         instructions = tr("hud_instructions")
         draw_text(
             self.ventana, instructions, self.font_instr, WHITE,
-            (self.ANCHO - self.font_instr.size(instructions)[0] - 12, self.ALTO - 28), alpha=240
+            (self.ANCHO - self.font_instr.size(instructions)[0] - 12, 10), alpha=240
         )
 
         if self.show_ranking_message and current_time < self.ranking_message_end:
@@ -2365,6 +2360,71 @@ class Game:
         self.draw_hold()
         pygame.display.update()
 
+    def standings(self):
+        """Every snake by its place in this episode: best score in it, then score now, then the all-time ranking."""
+        return sorted(self.snakes, key=lambda s: (-s.episode_best, -s.puntaje, -s.ranking_score()))
+
+    def standings_rule(self, s):
+        if s.puntaje >= ENEMY_COLLISION_THRESHOLD:
+            return "rivals"
+        if s.puntaje >= WALL_COLLISION_THRESHOLD:
+            return "walls"
+        if s.self_collision_enabled:
+            return "self"
+        return "warn" if s.self_collision_warning_active else "free"
+
+    def standings_lines(self, name_width):
+        """The table's header and rows, the same columns as the Kotlin arena's (kotlin arena.engine.Standings)."""
+        header = (f"{'#':>3} {'':<{name_width}} {'now':>5} {'ep':>5} {'len':>5} {'rule':<7} {'deaths':>7} "
+                  f"{'foods':>6} {'best':>5} {'rank':>7}")
+        rows = []
+        for i, s in enumerate(self.standings()):
+            deaths = sum(1 for life in s.lives if life["cause"] != "episode_reset")
+            fell = "*" if s.nombre in self.snakes_fallen_this_episode else " "
+            rows.append((s, f"{i + 1:>3} {s.nombre[:name_width]:<{name_width}} {s.puntaje:>5.0f} {s.episode_best:>5.0f} "
+                            f"{len(s.segmentos):>5} {self.standings_rule(s):<7} {f'{deaths}{fell}':>7} {s.foods_eaten:>6} "
+                            f"{s.best_score():>5.0f} {s.ranking_score():>7.1f}"))
+        return header, rows
+
+    def table_font(self, size):
+        fonts = self.__dict__.setdefault("_table_fonts", {})
+        if size not in fonts:
+            fonts[size] = pygame.font.SysFont("consolas,dejavusansmono,couriernew,monospace", size)
+        return fonts[size]
+
+    def draw_standings(self, area, alpha, big=False):
+        """Every snake's standings at the bottom of area, centred, on a dark panel: up to 10 rows a column when there
+        is width for more columns, the font shrinking until they fit; beyond the smallest font the last rows are left
+        out, and said so."""
+        name_width = min(34, max([4] + [len(s.nombre) for s in self.snakes]))
+        header, rows = self.standings_lines(name_width)
+        size = max(14, self.ALTO // (40 if big else 60))
+        while True:
+            font = self.table_font(size)
+            line_h = font.get_linesize()
+            fits = area.height // line_h - 1
+            col_w = font.size(header + "   ")[0]
+            columns = max(1, area.width // col_w)
+            if fits >= 1 and (len(rows) <= fits * columns or size <= 9):
+                used = min(columns, max(-(-len(rows) // 10), -(-len(rows) // fits)))
+                per_column = min(fits, -(-len(rows) // used))
+                shown = min(len(rows), per_column * used)
+                x0 = area.x + (area.width - used * col_w) // 2
+                top = area.bottom - (per_column + 1) * line_h
+                panel = pygame.Surface((used * col_w, (per_column + 1) * line_h + 6), pygame.SRCALPHA)
+                panel.fill((0, 0, 0, 205))
+                self.ventana.blit(panel, (x0 - 6, top - 3))
+                for c in range(used):
+                    x = x0 + c * col_w
+                    draw_text(self.ventana, header, font, WHITE, (x, top), alpha=alpha)
+                    for k, (s, line) in enumerate(rows[c * per_column:min(shown, (c + 1) * per_column)]):
+                        draw_text(self.ventana, line, font, s.original_color, (x, top + (k + 1) * line_h), alpha=alpha)
+                if shown < len(rows):
+                    draw_text(self.ventana, f"+{len(rows) - shown} more", font, WHITE,
+                              (area.right - font.size(f"+{len(rows) - shown} more")[0] - 10, area.bottom - line_h), alpha=alpha)
+                return
+            size -= 1
+
     def draw_episode_end_screen(self):
         overlay = pygame.Surface((self.ANCHO, self.ALTO), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 185))
@@ -2373,15 +2433,8 @@ class Game:
         draw_text(self.ventana, tr("ep_end_title", ep=self.episode_count), self.font_leader, MATRIX_GREEN, (self.ANCHO // 2, 50), center=True)
         draw_text(self.ventana, tr("ep_end_subtitle"), self.font_msg, WHITE, (self.ANCHO // 2, 105), center=True)
 
-        sorted_by_max = sorted(self.snakes, key=lambda s: s.ranking_score(), reverse=True)
-        y_offset = 145
-        for i, s in enumerate(sorted_by_max[:15]):
-            tag = " [LLM]" if s.external_tactic else ""
-            rank_text = f"#{i+1:02d}: {s.nombre + tag:<34} - Score: {s.ranking_score():.1f} (Max {s.best_score():.0f} x{s.code_factor():.3f})"
-            draw_text(self.ventana, rank_text, self.font_rank, s.original_color, (self.ANCHO // 2, y_offset), center=True)
-            y_offset += 24
-
-        y_offset += 25
+        y_offset = self.ALTO - 110
+        self.draw_standings(pygame.Rect(0, 145, self.ANCHO, y_offset - 160), 255, big=True)
         draw_text(self.ventana, tr("ep_end_prompt"), self.font_msg, GOLD, (self.ANCHO // 2, y_offset), center=True)
         left = max(0, int(EPISODE_AUTO_CONTINUE_SEC - (time.time() - getattr(self, "episode_end_time", time.time()))))
         draw_text(self.ventana, f"Auto-continue in {left} s", self.font_msg, WHITE, (self.ANCHO // 2, y_offset + 36), center=True)

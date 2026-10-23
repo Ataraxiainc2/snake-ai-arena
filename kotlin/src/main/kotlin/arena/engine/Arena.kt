@@ -363,6 +363,9 @@ class Arena(val cfg: ArenaConfig, tactics: List<TacticEntry>, val brain: Brain? 
         lastTickNanos = System.nanoTime() - tickStart
     }
 
+    /** [s] has already died in this episode (it plays on, respawned, until every snake has died once). */
+    fun fell(s: Snake): Boolean = fallen[s.id]
+
     /**
      * The snakes by their place in this episode: the best score in it (any of their lives), then the score now, then
      * the all-time ranking. What the screens list while the game plays; the all-time ranking is [Snake.rankingScore].
