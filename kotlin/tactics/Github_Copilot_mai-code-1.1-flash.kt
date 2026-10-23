@@ -121,6 +121,13 @@ class Tactic : SnakeTactic {
         blocked: Int
     ): Int {
         val marks = p.marks
+        if (bodyBase != 0) {
+            val body = p.myBody
+            for (i in body.indices) {
+                val c = body[i]
+                if (marks[c] != blocked) marks[c] = bodyBase + i + 1
+            }
+        }
         if (marks[start] == blocked || !open(marks[start], 1, bodyBase, p.myBody.size, growth)) return -1
         val mark = p.newMark()
         val queue = p.queue

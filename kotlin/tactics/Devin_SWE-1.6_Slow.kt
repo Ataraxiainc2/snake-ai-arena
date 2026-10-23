@@ -28,11 +28,14 @@ class Tactic : SnakeTactic {
   var tg=tl;var bk=Int.MAX_VALUE
   for(i in p.foods.indices){val f=p.foods[i];val d=ds(hd,f);val e=p.foodRivalDistance(i);val k=d+(if(e<d)8+2*(d-e)else 0)+(if(e==d)2 else 0);if(k<bk){bk=k;tg=f}}
   val cap=b.size+(if(v>298)40 else 8);val hungry=p.turnsWithoutFood>700;val starving=p.turnsWithoutFood>=1350;val md=p.myDirection
-  var best=p.validMoves[0];var k0=-1;var k1=0;var k2=0;var k3=0;var k4=2
-  for(m in p.validMoves){val c=nx(hd,m);val f=c in p.foods;gr=g0+(if(f)1 else 0);val r=room(b,c,cap,mk,q,p.newMark(),g)
+  var best=p.validMoves[0];var k0=-1;var k1=0;var k2=0;var k3=0;var k4=2;var foundAny=false
+  for(m in p.validMoves){if(k0>=0&&p.nanosLeft()<=0)break
+   val c=nx(hd,m);val f=c in p.foods;gr=g0+(if(f)1 else 0);val r=room(b,c,cap,mk,q,p.newMark(),g)
+   if(r>0)foundAny=true
    val minSpace=if(starving)1 else b.size/2
    val a0=if(hungry)(if(r>=minSpace)1 else 0)else r;val a1=if(hungry||!f)0 else 1;val a2=-ds(c,tg);val a3=if(hungry)0 else -ds(c,tl);val a4=if(m==md)0 else 1
    if(a0>k0||a0==k0&&(a1>k1||a1==k1&&(a2>k2||a2==k2&&(a3>k3||a3==k3&&a4<k4)))){best=m;k0=a0;k1=a1;k2=a2;k3=a3;k4=a4}}
+  if(!foundAny){for(m in p.validMoves){val c=nx(hd,m);if(mk[c]!=g)return m}}
   return best
  }
 }

@@ -16,10 +16,10 @@ if(el)for(e in p.enemies){val z=e.body[0];for(k in 0..3)mk[nx(z,k)]=g}
 var tg=tl;var bk=Int.MAX_VALUE
 for(i in p.foods.indices){val f=p.foods[i];val d=ds(hd,f);val r=p.foodRivalDistance(i);val k=d+(if(el&&r<8)800000 else if(r<d)8+2*(d-r)else 0)
 if(k<bk){bk=k;tg=f}}
-val ne=b.size+8+(if(el)40 else 0);val Y=if(ne<3000)ne else 3000;val hu=p.turnsWithoutFood>800;val md=p.myDirection
+val Y=b.size+108+(if(el)40 else 0);val hu=p.turnsWithoutFood>800;val md=p.myDirection
 var be=p.validMoves[0];var k0=-1;var k1=0;var k2=0;var k3=0;var k4=2
 for(m in p.validMoves){val c=nx(hd,m);val r=rm(p,c,c in p.foods,Y)
-val a0=if(hu)if(r>0)1 else 0 else r;val a1=if(hu)0 else if(c in p.foods)1 else 0;val a2=-ds(c,tg);val a3=if(hu)0 else-ds(c,tl);val a4=if(m==md)0 else 1
+val a0=if(hu)if(r>Y/2)1 else 0 else r;val a1=if(c in p.foods)1 else 0;val a2=-ds(c,tg);val a3=if(hu)0 else-ds(c,tl);val a4=if(m==md)0 else 1
 if(a0>k0||a0==k0&&(a1>k1||a1==k1&&(a2>k2||a2==k2&&(a3>k3||a3==k3&&a4<k4)))){be=m;k0=a0;k1=a1;k2=a2;k3=a3;k4=a4}}
 return be}
 }
