@@ -1,74 +1,27 @@
-import kotlin.math.abs
-import kotlin.math.min
-
-class Tactic : SnakeTactic {
-    private var o = IntArray(0); private var q = IntArray(0); private var g = 0
-    private var w = 0; private var h = 0; private var t = true; private var hd = 0
-    private var bs = 0; private var ln = 0; private var gr = 0
-
-    private fun nx(c: Int, d: Int): Int {
-        val x = c % w + Move.DX[d]; val y = c / w + Move.DY[d]
-        return if (t) (y + h) % h * w + (x + w) % w else if (x in 0 until w && y in 0 until h) y * w + x else hd
-    }
-
-    private fun ds(a: Int, c: Int): Int {
-        val i = abs(a % w - c % w); val j = abs(a / w - c / w)
-        return if (t) min(i, w - i) + min(j, h - j) else i + j
-    }
-
-    // my body cell k holds bs+1+k: it is free from step ln-k (+1 per meal still to digest)
-    private fun ok(c: Int, d: Int): Boolean {
-        val m = o[c]
-        return m != g && (m <= bs || m > bs + ln || d >= ln + bs + 1 - m + gr)
-    }
-
-    private fun room(b: IntArray, c: Int, cap: Int, sg: Int): Int {
-        for (i in 0 until ln) if (o[b[i]] != g) o[b[i]] = bs + 1 + i
-        o[hd] = g
-        if (!ok(c, 1)) return 0
-        o[c] = sg; q[0] = c; var n = 1; var k = 0; var d = 1; var e = 1
-        while (k < n) {
-            if (k == e) { d++; e = n }
-            val a = q[k++]
-            for (m in 0..3) {
-                val x = nx(a, m)
-                if (o[x] != sg && ok(x, d + 1)) { o[x] = sg; q[n++] = x; if (n > cap) return cap }
-            }
-        }
-        return n
-    }
-
-    override fun decide(p: Perception): Int {
-        w = p.width; h = p.height; t = p.toroidal
-        o = p.marks; q = p.queue; g = p.newMark()
-        val b = p.myBody; hd = b[0]; val v = p.myScore; val tl = b[b.size - 1]
-        bs = p.newMark(); ln = 0; val g0 = if (p.previousReward == 15f) 1 else 0
-        if (v > 98) { ln = b.size; repeat(ln) { p.newMark() } }
-        // the shared mark counter wrapped (marks cleared) while reserving: start again on clean marks
-        if (p.newMark() < bs) return decide(p)
-        if (v > 298) for (e in p.enemies) {
-            for (c in e.body) o[c] = g
-            if (!t) for (d in 0..3) o[nx(e.body[0], d)] = g
-        }
-        // hungry (starvation at 1500): the nearest food, rivals or not; room for half the body, any way out at the end
-        val tw = p.turnsWithoutFood; val hungry = tw > 700
-        var tg = tl; var bk = Int.MAX_VALUE
-        for (i in p.foods.indices) {
-            val f = p.foods[i]; val d = ds(hd, f); val e = p.foodRivalDistance(i)
-            val k = if (hungry) d else d + (if (e < d) 8 + 2 * (d - e) else 0) + (if (e == d) 2 else 0)
-            if (k < bk) { bk = k; tg = f }
-        }
-        val cap = if (tw > 1350) 1 else if (hungry) b.size / 2 + 2 else b.size + (if (v > 298) 40 else 8)
-        var best = p.validMoves[0]; var k0 = -1; var k1 = 0; var k2 = 0; var k3 = 0
-        for (m in p.validMoves) {
-            if (k0 >= 0 && p.nanosLeft() <= 0) break
-            val c = nx(hd, m); val f = c in p.foods; gr = g0 + (if (f) 1 else 0); val r = room(b, c, cap, p.newMark())
-            val a1 = if (f) 1 else 0
-            val a2 = -ds(c, tg); val a3 = if (hungry) 0 else -ds(c, tl)
-            if (r > k0 || r == k0 && (a1 > k1 || a1 == k1 && (a2 > k2 || a2 == k2 && a3 > k3))) {
-                best = m; k0 = r; k1 = a1; k2 = a2; k3 = a3
-            }
-        }
-        return best
-    }
-}
+import kotlin.math.*
+class Tactic:SnakeTactic{
+var o=IntArray(0);var q=o;var g=0;var w=0;var h=0;var t=true;var hd=0;var bs=0;var ln=0;var gr=0
+fun nx(c:Int,d:Int):Int{val x=c%w+Move.DX[d];val y=c/w+Move.DY[d];return if(t)(y+h)%h*w+(x+w)%w else if(x in 0 until w&&y in 0 until h)y*w+x else hd}
+fun ds(a:Int,c:Int):Int{val i=abs(a%w-c%w);val j=abs(a/w-c/w);return if(t)min(i,w-i)+min(j,h-j)else i+j}
+fun ok(c:Int,d:Int):Boolean{val m=o[c];return m!=g&&(m<=bs||m>bs+ln||d>=ln+bs+1-m+gr)}
+fun rm(b:IntArray,c:Int,cp:Int,s:Int):Int{for(i in 0 until ln)if(o[b[i]]!=g)o[b[i]]=bs+1+i;o[hd]=g;if(!ok(c,1))return 0
+o[c]=s;q[0]=c;var n=1;var k=0;var d=1;var e=1
+while(k<n){if(k==e){d++;e=n};val a=q[k++];for(m in 0..3){val x=nx(a,m);if(o[x]!=s&&ok(x,d+1)){o[x]=s;q[n++]=x;if(n>cp)return cp}}}
+return n}
+override fun decide(p:Perception):Int{
+w=p.width;h=p.height;t=p.toroidal;o=p.marks;q=p.queue;g=p.newMark()
+val b=p.myBody;hd=b[0];val v=p.myScore;val tl=b[b.size-1];bs=p.newMark();ln=0;val g0=if(p.previousReward==15f)1 else 0
+if(v>98){ln=b.size;repeat(ln){p.newMark()}}
+if(p.newMark()<bs)return decide(p)
+if(v>298)for(e in p.enemies){for(c in e.body)o[c]=g;if(!t)for(d in 0..3)o[nx(e.body[0],d)]=g}
+val tw=p.turnsWithoutFood;val hu=tw>700;var tg=tl;var bk=1 shl 30
+for(i in p.foods.indices){val f=p.foods[i];val d=ds(hd,f);val e=p.foodRivalDistance(i)
+val k=if(hu)d else d+(if(e<d)8+2*(d-e)else if(e==d)2 else 0);if(k<bk){bk=k;tg=f}}
+val cp=if(tw>1350)1 else if(hu)b.size/2+2 else b.size+(if(v>298)40 else 8)
+var r0=-1;var s0=0;var bm=p.validMoves[0]
+for(m in p.validMoves){if(r0>=0&&p.nanosLeft()<=0)break
+val c=nx(hd,m);val f=c in p.foods;gr=g0+(if(f)1 else 0);val r=rm(b,c,cp,p.newMark())
+val s=(if(f)1 shl 20 else 0)-(ds(c,tg) shl 10)-(if(hu)0 else ds(c,tl))
+if(r>r0||r==r0&&s>s0){r0=r;s0=s;bm=m}}
+if(r0<1)for(m in p.validMoves){val c=nx(hd,m);if(c!=hd&&p.bodies[c].toInt()==0)return m}
+return bm}}

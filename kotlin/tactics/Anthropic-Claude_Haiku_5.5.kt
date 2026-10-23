@@ -1,143 +1,34 @@
-class Tactic : SnakeTactic {
-    override fun decide(p: Perception): Int {
-        val moves = p.validMoves
-        if (moves.isEmpty()) return Move.UP
-        if (moves.size == 1) return moves[0]
-        val w = p.width
-        val h = p.height
-        val score = p.myScore
-        val wrap = score < 200
-        val enemyKills = score >= 300
-        val body = p.myBody
-        val len = body.size
-        val head = body[0]
-        val mk = p.marks
-        val own = p.newMark()
-        if (score >= 100) {
-            for (c in body) mk[c] = own
-        }
-
-        val cells = IntArray(4)
-        val eats = BooleanArray(4)
-        val dead = BooleanArray(4)
-        for (j in moves.indices) {
-            val m = moves[j]
-            var nx = head % w + Move.DX[m]
-            var ny = head / w + Move.DY[m]
-            if (wrap) {
-                nx = (nx + w) % w
-                ny = (ny + h) % h
-            }
-            if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
-                dead[j] = true
-                continue
-            }
-            val c = ny * w + nx
-            cells[j] = c
-            eats[j] = p.foods.contains(c)
-            dead[j] = blocked(p, c, own, eats[j], score)
-        }
-
-        var target = -1
-        var targetKey = Int.MAX_VALUE
-        for (i in p.foods.indices) {
-            val f = p.foods[i]
-            val d = dist(head, f, w, h, wrap)
-            val r = p.foodRivalDistance(i)
-            val k = if (r < d) d + 2 * (d - r) + 6 else d
-            if (k < targetKey) {
-                targetKey = k
-                target = f
-            }
-        }
-
-        val hungry = p.turnsWithoutFood * 2 > p.starvationTurns
-        val dWeight = if (hungry) 600L else 300L
-        val cap = len + 6
-        val useFlood = score >= 100 && p.nanosLeft() > 20_000L
-
-        var best = moves[0]
-        var bestKey = Long.MIN_VALUE
-        for (j in moves.indices) {
-            if (dead[j]) continue
-            val c = cells[j]
-            val eat = eats[j]
-            val room = if (useFlood) flood(p, c, eat, own, cap) else len
-            var key = 0L
-            if (room >= len) key += 10_000_000L
-            if (eat) key += 1_000_000L
-            val dt = if (target >= 0) dist(c, target, w, h, wrap) else 0
-            key += 200_000L - dWeight * dt
-            key += 10L * minOf(room, cap)
-            if (enemyKills) {
-                for (e in p.enemies) {
-                    if (e.body.isNotEmpty() && e.body.size >= len && dist(c, e.body[0], w, h, wrap) <= 1) {
-                        key -= 500_000L
-                    }
-                }
-            }
-            if (key > bestKey) {
-                bestKey = key
-                best = moves[j]
-            }
-        }
-        return best
-    }
-
-    // A cell a snake of ours cannot enter this turn. Below 100 nothing kills; from 100 our own body
-    // (the tail excepted when we do not eat); from 300 every other body too.
-    private fun blocked(p: Perception, c: Int, own: Int, eat: Boolean, score: Int): Boolean {
-        var k = p.bodies[c].toInt()
-        if (k == 0) return false
-        if (p.marks[c] == own) {
-            if (score >= 100 && (eat || c != p.myBody[p.myBody.size - 1])) return true
-            k--
-        }
-        return score >= 300 && k > 0
-    }
-
-    // Free cells reachable from start (capped): a move that leaves too little room is a trap.
-    private fun flood(p: Perception, start: Int, eat: Boolean, own: Int, cap: Int): Int {
-        val w = p.width
-        val h = p.height
-        val wrap = p.myScore < 200
-        val mk = p.marks
-        val q = p.queue
-        val vis = p.newMark()
-        mk[start] = vis
-        q[0] = start
-        var n = 1
-        var qi = 0
-        while (qi < n) {
-            val cur = q[qi++]
-            val cx = cur % w
-            val cy = cur / w
-            for (m in 0..3) {
-                var nx = cx + Move.DX[m]
-                var ny = cy + Move.DY[m]
-                if (wrap) {
-                    nx = (nx + w) % w
-                    ny = (ny + h) % h
-                } else if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
-                    continue
-                }
-                val c = ny * w + nx
-                if (mk[c] == vis || blocked(p, c, own, eat, p.myScore)) continue
-                mk[c] = vis
-                q[n++] = c
-                if (n >= cap) return n
-            }
-        }
-        return n
-    }
-
-    private fun dist(a: Int, b: Int, w: Int, h: Int, wrap: Boolean): Int {
-        var dx = maxOf(a % w - b % w, b % w - a % w)
-        var dy = maxOf(a / w - b / w, b / w - a / w)
-        if (wrap) {
-            dx = minOf(dx, w - dx)
-            dy = minOf(dy, h - dy)
-        }
-        return dx + dy
-    }
-}
+import kotlin.math.*
+class Tactic:SnakeTactic{
+var w=0;var h=0;var t=true;var hd=0;var g=0;var bs=0;var ln=0;var el=false
+fun nx(c:Int,k:Int):Int{val x=c%w+Move.DX[k];val y=c/w+Move.DY[k];return if(t)(y+h)%h*w+(x+w)%w else if(x in 0 until w&&y in 0 until h)y*w+x else hd}
+fun ds(a:Int,c:Int):Int{val i=abs(a%w-c%w);val j=abs(a/w-c/w);return if(t)min(i,w-i)+min(j,h-j)else i+j}
+fun blk(p:Perception,c:Int,k:Int):Boolean{val m=p.marks[c];return m==g||m>bs&&m<=bs+ln&&m-bs>k||el&&p.bodies[c]>0}
+fun stamp(p:Perception){val b=p.myBody;for(i in 0 until ln)if(p.marks[b[i]]!=g)p.marks[b[i]]=bs+ln-i}
+fun flood(p:Perception,s:Int,cap:Int,ea:Int):Int{val mk=p.marks;val q=p.queue;val v=p.newMark();mk[s]=v;q[0]=s
+var n=1;var i=0;var d=1;var e=1
+while(i<n){if(i==e){d++;e=n};val c=q[i++]
+for(k in 0..3){val x=nx(c,k);if(mk[x]!=v&&!blk(p,x,d+1-ea)){mk[x]=v;q[n++]=x;if(n>=cap)return n}}}
+return n}
+override fun decide(p:Perception):Int{
+w=p.width;h=p.height;t=p.toroidal&&p.myScore<200
+val b=p.myBody;hd=b[0];val tl=b[b.size-1];val v=p.myScore;el=v>298||p.enemyCollision
+bs=p.newMark();ln=if(v>98)b.size else 0
+repeat(ln){p.newMark()}
+if(p.newMark()<bs)return decide(p)
+g=p.newMark();p.marks[hd]=g
+if(el)for(e in p.enemies)for(k in 0..3)p.marks[nx(e.body[0],k)]=g
+stamp(p)
+var tg=tl;var bk=Int.MAX_VALUE
+for(i in p.foods.indices){val f=p.foods[i];val d=ds(hd,f);val r=p.foodRivalDistance(i)
+val k=d+(if(el&&r<8)800000 else if(r<d)8+2*(d-r)else 0);if(k<bk){bk=k;tg=f}}
+val hu=p.turnsWithoutFood>700;val cap=b.size+8
+var r0=-1;var s0=0;var bm=p.validMoves[0]
+for(m in p.validMoves){if(r0>=0&&p.nanosLeft()<=0)break
+val c=nx(hd,m);stamp(p)
+if(blk(p,c,if(p.previousReward==15f)0 else 1))continue
+val f=c in p.foods;val r=if(hu)1 else flood(p,c,cap,if(f)1 else 0)
+val s=(if(f)1 shl 20 else 0)-(ds(c,tg)shl 10)-ds(c,tl)
+if(r>r0||r==r0&&s>s0){r0=r;s0=s;bm=m}}
+if(r0<0)for(m in p.validMoves)if(p.bodies[nx(hd,m)]<1)return m
+return bm}}
