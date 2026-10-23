@@ -70,18 +70,19 @@ class Session(o: Options, private val root: File, round: Int, val events: Mutabl
         val cfg = ArenaConfig(w, h, snakes, foods, seed, human = human,
             budgetNanos = o.long("budget-us", 0L).takeIf { it > 0 }?.times(1000),
             threads = o.int("threads", Runtime.getRuntime().availableProcessors().coerceAtMost(8)),
-            // each call timed by the CPU time of its thread, as on the phone (--wall-clock: by the wall clock)
+            // each call timed by the CPU time of its thread, as on the phone, where that clock is fine (Linux, macOS);
+            // by the wall clock with --wall-clock or where it is coarse (Windows: see Clock.kt)
             callClock = if (o.flag("wall-clock")) ({ System.nanoTime() }) else cpuClock ?: { System.nanoTime() })
         arena = Arena(cfg, entries.take(snakes - (if (human) 1 else 0)), brain)
         Brain.load(qFile, brain, arena.snakes)
         info = linkedMapOf(
-            "platform" to "pc", "number" to round, "started" to Telemetry.now(), "mode" to if (human) "view" else "unattended",
+            "platform" to "pc", "clock" to if (o.flag("wall-clock")) "wall" else clockName, "number" to round, "started" to Telemetry.now(), "mode" to if (human) "view" else "unattended",
             "fps" to o.int("fps", 15), "restart_every_min" to o.double("round-minutes", 0.0).takeIf { it > 0 },
         )
         arena.onEpisodeEnd = { save() }
         println("[KOTLIN ARENA] game $round: ${w}x$h cells, $snakes snakes (${entries.size} tactics, " +
             "${arena.snakes.count { it.kind == Kind.DQN }} DQN${if (human) ", you" else ""}), $foods foods, seed $seed, " +
-            "budget ${"%.3f".format(Locale.ROOT, arena.budget / 1e6)} ms, ${cfg.threads} threads")
+            "budget ${"%.3f".format(Locale.ROOT, arena.budget / 1e6)} ms (${info["clock"]} clock), ${cfg.threads} threads")
     }
 
     private fun log(line: String) {
