@@ -45,9 +45,14 @@ class Options(args: List<String>) {
 
 /**
  * One game of a run: the tactic files loaded fresh (new class loaders), the spare slots filled with learning DQN
- * snakes, and what is saved in kotlin/: telemetry_kotlin.json and q_tables_kotlin.bin.
+ * snakes, and what is saved in kotlin/: telemetry_kotlin.json and q_tables_kotlin.bin. With [screen] (the viewer full
+ * screen) the board keeps the phone's columns and takes as many rows as the screen's shape needs for square cells
+ * (195 x 110 on 16:9), so the snakes move over the whole screen; without it (run, a window) it is the phone's board.
  */
-class Session(o: Options, private val root: File, round: Int, val events: MutableList<String>, human: Boolean = false) {
+class Session(
+    o: Options, private val root: File, round: Int, val events: MutableList<String>, human: Boolean = false,
+    screen: Pair<Int, Int>? = null,
+) {
     private val loader = TacticLoader(File(root, o.str("folder", TACTICS)), File(WORK, "tactics"))
     private val entries = ArrayList(loader.loadAll { log(it) })
     private val telemetryFile = File(root, o.str("telemetry", "kotlin/telemetry_kotlin.json"))
@@ -62,8 +67,9 @@ class Session(o: Options, private val root: File, round: Int, val events: Mutabl
         // as SNAKES.py's default_arena: tactics + 3 (min 10); the human, when playing, takes one of those 3 slots
         var snakes = o.int("snakes", 0).takeIf { it > 0 } ?: maxOf(players, Rules.defaultSnakes(entries.size))
         if (o.flag("no-dqn")) snakes = minOf(snakes, players) // no spare slots without learners
-        // the phone's board unless --cells or --size says otherwise
-        val (w, h) = o.board(Rules.board(snakes))
+        // the phone's board (its columns, the screen's shape full screen) unless --cells or --size says otherwise
+        val phone = Rules.board(snakes)
+        val (w, h) = o.board(screen?.let { (sw, sh) -> phone.first to Math.round(phone.first.toDouble() * sh / sw).toInt() } ?: phone)
         val foods = o.int("foods", 0).takeIf { it > 0 } ?: Rules.defaultFoods(snakes)
         val seed = o.long("seed", System.nanoTime() and 0x7fffffffL) + round - 1
         brain = if (snakes > players && !o.flag("no-dqn")) Brain(seed) else null

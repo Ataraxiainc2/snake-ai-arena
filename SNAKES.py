@@ -2324,7 +2324,7 @@ class Game:
             self.ventana.blit(rank_text, (x, y))
 
         # Every snake's standings at the bottom centre, each row in its snake's own colour (the Kotlin arena's table).
-        self.draw_standings(pygame.Rect(0, self.ALTO * 3 // 5, self.ANCHO, self.ALTO * 2 // 5 - 6), 190)
+        self.draw_standings(pygame.Rect(0, self.ALTO * 3 // 4, self.ANCHO, self.ALTO // 4 - 4), 200)
 
         instructions = tr("hud_instructions")
         draw_text(
@@ -2393,12 +2393,12 @@ class Game:
         return fonts[size]
 
     def draw_standings(self, area, alpha, big=False):
-        """Every snake's standings at the bottom of area, centred, on a dark panel: up to 10 rows a column when there
-        is width for more columns, the font shrinking until they fit; beyond the smallest font the last rows are left
-        out, and said so."""
+        """Every snake's standings at the bottom of area, centred, small and over the game on a light dark panel (the
+        snakes keep the whole screen): up to 10 rows a column when there is width for more columns, the font shrinking
+        until they fit; beyond the smallest font the last rows are left out, and said so."""
         name_width = min(34, max([4] + [len(s.nombre) for s in self.snakes]))
         header, rows = self.standings_lines(name_width)
-        size = max(14, self.ALTO // (40 if big else 60))
+        size = max(14, self.ALTO // 40) if big else max(11, self.ALTO // 110)
         while True:
             font = self.table_font(size)
             line_h = font.get_linesize()
@@ -2412,7 +2412,7 @@ class Game:
                 x0 = area.x + (area.width - used * col_w) // 2
                 top = area.bottom - (per_column + 1) * line_h
                 panel = pygame.Surface((used * col_w, (per_column + 1) * line_h + 6), pygame.SRCALPHA)
-                panel.fill((0, 0, 0, 205))
+                panel.fill((0, 0, 0, 0 if big else 140))
                 self.ventana.blit(panel, (x0 - 6, top - 3))
                 for c in range(used):
                     x = x0 + c * col_w

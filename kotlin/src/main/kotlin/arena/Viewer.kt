@@ -77,7 +77,11 @@ object Viewer {
     fun run(o: Options, root: File): Int {
         val events = ArrayList<String>(listOfNotNull(Launch.startLine))
         var round = 1
-        var game = Session(o, root, round, events, human = o.flag("human"))
+        val fullScreen = !o.flag("window")
+        // full screen, the board takes the screen's shape (square cells, the snakes on the whole screen)
+        val screen = if (fullScreen) java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice
+            .defaultConfiguration.bounds.let { it.width to it.height } else null
+        var game = Session(o, root, round, events, human = o.flag("human"), screen = screen)
         var arena = game.arena
         // ended from outside (Ctrl+C, the Gradle run or the terminal closed, the process terminated): the game loop
         // stops and its finally saves telemetry and learning, as `run` does; Esc ends it from inside (running = false)
@@ -88,7 +92,6 @@ object Viewer {
             Launch.stoppedFromOutside("view")
             main.join(15_000)
         })
-        val fullScreen = !o.flag("window")
         val pacer = Pacer(o.int("fps", 15))
         val panel = object : JPanel() {
             init {
@@ -217,7 +220,7 @@ object Viewer {
                     if (game.periodic()) { // a new tactic file is ready: next game, same window
                         game.save()
                         arena.close()
-                        game = Session(o, root, ++round, events, human = o.flag("human"))
+                        game = Session(o, root, ++round, events, human = o.flag("human"), screen = screen)
                         arena = game.arena
                         attach(arena)
                         colors = colorsOf(arena)
@@ -316,12 +319,11 @@ object Viewer {
     }
 
     private fun paint(g: Graphics2D, f: Frame, width: Int, height: Int) {
-        // square cells, the board (the phone's 195 x 90) as large as the screen allows, at the top: on a 16:9 screen
-        // it takes the whole width (3840 x 2160: 19.7 px a cell, 1772 px high) and the standings take the band below
+        // square cells over the whole screen: full screen the board has the screen's shape (195 x 110 on 16:9, 19.7 px
+        // a cell at 3840 x 2160); in a window or with --cells it is centred
         val board = g.transform
         val cell = minOf(width.toDouble() / f.w, height.toDouble() / f.h)
-        val boardH = (cell * f.h).toInt()
-        g.translate((width - cell * f.w) / 2, 0.0)
+        g.translate((width - cell * f.w) / 2, (height - cell * f.h) / 2)
         g.scale(cell, cell)
         g.color = Color(24, 24, 24) // the board's edge
         g.draw(Rectangle2D.Double(0.0, 0.0, f.w.toDouble(), f.h.toDouble()))
@@ -362,13 +364,8 @@ object Viewer {
             shadowed(g, m.text, (width - mm.stringWidth(m.text)) / 2, y, m.color, 200)
             y += mm.height
         }
-        // every snake's standings, each row in its snake's colour: in the band under the board, or over the board's
-        // bottom as a watermark when the screen leaves no band
-        val band = height - boardH
-        if (f.episodeEnd == null) {
-            if (band >= fm.height * MIN_BAND_LINES) table(g, f, Rectangle(0, boardH + fs / 2, width, band - fs / 2), fs * 2, 210)
-            else table(g, f, Rectangle(0, height * 2 / 3, width, height / 3), fs, 150)
-        }
+        // every snake's standings over the game, small, at the bottom centre, each row in its snake's colour
+        if (f.episodeEnd == null) table(g, f, Rectangle(0, height * 3 / 4, width, height / 4 - fs / 2), fs, 170)
         f.episodeEnd?.let { episodeEnd(g, f, it, width, height, fs) }
         f.hold?.takeIf { it.isNotEmpty() }?.let { n -> // the 3-2-1, large in the middle
             g.font = font.deriveFont(height / 5f)
@@ -389,10 +386,11 @@ object Viewer {
     }
 
     /**
-     * Every snake's standings ([Standings]) inside [area], centred, as large as they fit: the font shrinks from [size]
-     * to [MIN_FONT], in as many columns as needed; beyond that the last rows are left out, and said so.
+     * Every snake's standings ([Standings]) at the bottom of [area], centred, as large as they fit: up to [maxRows] rows a
+     * column while there is width for more columns, the font shrinking from [size] to [MIN_FONT]; beyond that the last
+     * rows are left out, and said so.
      */
-    private fun table(g: Graphics2D, f: Frame, area: Rectangle, size: Int, alpha: Int) {
+    private fun table(g: Graphics2D, f: Frame, area: Rectangle, size: Int, alpha: Int, maxRows: Int = ROWS) {
         val rows = f.ranking
         val nameWidth = (rows.maxOfOrNull { it.name.length } ?: 4).coerceIn(4, MAX_NAME)
         val header = Standings.header(nameWidth)
@@ -400,16 +398,18 @@ object Viewer {
         while (true) {
             g.font = font.deriveFont(fs.toFloat())
             val fm = g.fontMetrics
-            val perColumn = (area.height - fm.descent) / fm.height - 1
+            val fits = (area.height - fm.descent) / fm.height - 1
             val colW = fm.stringWidth(header) + fm.stringWidth("   ")
             val columns = maxOf(1, area.width / colW)
-            if (perColumn >= 1 && (rows.size <= perColumn * columns || fs <= MIN_FONT)) {
-                val used = minOf(columns, (rows.size + perColumn - 1) / perColumn)
+            if (fits >= 1 && (rows.size <= fits * columns || fs <= MIN_FONT)) {
+                val used = minOf(columns, maxOf((rows.size + maxRows - 1) / maxRows, (rows.size + fits - 1) / fits))
+                val perColumn = minOf(fits, (rows.size + used - 1) / used)
                 val shown = minOf(rows.size, perColumn * used)
                 val x0 = area.x + (area.width - used * colW) / 2
+                val top = area.y + area.height - (perColumn + 1) * fm.height
                 for (c in 0 until used) {
                     val x = x0 + c * colW
-                    var y = area.y + fm.ascent
+                    var y = top + fm.ascent
                     shadowed(g, header, x, y, Color.WHITE, alpha)
                     for (r in rows.subList(c * perColumn, minOf(shown, (c + 1) * perColumn))) {
                         y += fm.height
@@ -437,7 +437,7 @@ object Viewer {
         val fm = g.fontMetrics
         shadowed(g, text, (width - fm.stringWidth(text)) / 2, top + fs + fm.ascent, Color.WHITE, 255)
         val tableTop = top + fs + 2 * fm.height
-        table(g, f, Rectangle(0, tableTop, width, top + boxH - tableTop - fs), fs * 2, 255)
+        table(g, f, Rectangle(0, tableTop, width, top + boxH - tableTop - fs), fs * 2, 255, maxRows = Int.MAX_VALUE)
     }
 
     private fun shadowed(g: Graphics2D, t: String, x: Int, y: Int, c: Color, alpha: Int) {
@@ -448,7 +448,7 @@ object Viewer {
     }
 
     private val ALERT = Color(255, 50, 50)
-    private const val MIN_BAND_LINES = 6
+    private const val ROWS = 10
     private const val MIN_FONT = 8
     private const val MAX_NAME = 34
 
