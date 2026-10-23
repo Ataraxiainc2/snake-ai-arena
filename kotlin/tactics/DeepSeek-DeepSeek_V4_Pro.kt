@@ -17,15 +17,17 @@ class Tactic : SnakeTactic {
         return m != g && (m <= bs || m > bs + ln || d >= ln + bs + 1 - m + gr)
     }
 
-    private fun room(c: Int, cap: Int, mk: IntArray, q: IntArray, sg: Int, g: Int): Int {
+    private fun room(c: Int, cap: Int, mk: IntArray, q: IntArray, sg: Int, g: Int, b: IntArray): Int {
+        for (i in 0 until ln) if (mk[b[i]] != g) mk[b[i]] = bs + 1 + i
+        mk[hd] = g
         if (!ok(c, 1, mk, g)) return 0
         mk[c] = sg; q[0] = c; var n = 1; var k = 0; var d = 1; var e = 1
         while (k < n) {
             if (k == e) { d++; e = n }
             val a = q[k++]
             for (m in 0..3) {
-                val b = nx(a, m)
-                if (mk[b] != sg && ok(b, d + 1, mk, g)) { mk[b] = sg; q[n++] = b; if (n > cap) return cap }
+                val z = nx(a, m)
+                if (mk[z] != sg && ok(z, d + 1, mk, g)) { mk[z] = sg; q[n++] = z; if (n > cap) return cap }
             }
         }
         return n
@@ -48,11 +50,13 @@ class Tactic : SnakeTactic {
             val k = d + (if (e < d) 8 + 2 * (d - e) else 0) + (if (e == d) 2 else 0)
             if (k < bk) { bk = k; tg = f }
         }
-        val cap = b.size + (if (v > 298) 40 else 8); val hungry = p.turnsWithoutFood > 800; val md = p.myDirection
+        val cap = b.size + (if (v > 298) 40 else 8); val hungry = p.turnsWithoutFood > 800
+        val starving = p.turnsWithoutFood > p.starvationTurns - 150; val md = p.myDirection
         var best = p.validMoves[0]; var k0 = -1; var k1 = 0; var k2 = 0; var k3 = 0; var k4 = 2
         for (m in p.validMoves) {
-            val c = nx(hd, m); val f = c in p.foods; gr = g0 + (if (f) 1 else 0); val r = room(c, cap, mk, q, p.newMark(), g)
-            val a0 = if (hungry) (if (r > 0) 1 else 0) else r
+            val c = nx(hd, m); val f = c in p.foods; gr = g0 + (if (f) 1 else 0)
+            val r = room(c, cap, mk, q, p.newMark(), g, b)
+            val a0 = if (hungry) (if (starving) (if (r > 0) 1 else 0) else (if (2 * r >= ln) 1 else 0)) else r
             val a1 = if (hungry || !f) 0 else 1
             val a2 = -ds(c, tg); val a3 = if (hungry) 0 else -ds(c, tl)
             val a4 = if (m == md) 0 else 1

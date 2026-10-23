@@ -13,24 +13,24 @@ class Tactic : SnakeTactic {
         val moves = p.validMoves
         if (moves.size == 1) return moves[0]
 
-        val blocking = p.newMark()
         val selfDanger = p.selfCollision || p.selfCollisionWarning
-        val enemyDanger = p.myScore >= 299 || p.enemyCollision
+        var bodyBase = 0
         if (selfDanger) {
-            val end = if (p.previousReward > 10f) body.size else body.size - 1
-            for (i in 0 until end) p.marks[body[i]] = blocking
+            bodyBase = p.newMark()
+            for (i in body.indices) p.newMark()
+            for (i in body.indices) p.marks[body[i]] = bodyBase + i + 1
         }
+        val enemyDanger = p.myScore >= 299 || p.enemyCollision
+        val blocked = p.newMark()
         if (enemyDanger) for (e in p.enemies) {
-            for (c in e.body) p.marks[c] = blocking
-            if (e.score >= 300) {
-                val eh = e.body[0]
-                for (d in 0..3) {
-                    val x = eh % w + Move.DX[d]
-                    val y = eh / w + Move.DY[d]
-                    val c = if (tor) ((y + h) % h) * w + (x + w) % w
-                    else if (x in 0 until w && y in 0 until h) y * w + x else -1
-                    if (c >= 0) p.marks[c] = blocking
-                }
+            for (c in e.body) p.marks[c] = blocked
+            val eh = e.body[0]
+            for (d in 0..3) {
+                val x = eh % w + Move.DX[d]
+                val y = eh / w + Move.DY[d]
+                val c = if (tor) ((y + h) % h) * w + (x + w) % w
+                else if (x in 0 until w && y in 0 until h) y * w + x else -1
+                if (c >= 0) p.marks[c] = blocked
             }
         }
 
@@ -64,25 +64,18 @@ class Tactic : SnakeTactic {
             return best
         }
 
-        val left = p.nanosLeft()
-        val cap = minOf(body.size + 8, if (left < 300_000L) 48 else if (left < 1_000_000L) 120 else 400)
+        val remaining = p.nanosLeft()
+        val cap = minOf(body.size + 8, if (remaining < 300_000L) 32 else if (remaining < 1_000_000L) 96 else 400)
+        val initialGrowth = (if (p.previousReward > 10f) 1 else 0)
         var best = moves[0]
         var bestValue = Long.MIN_VALUE
         for (m in moves) {
+            if (p.nanosLeft() < 40_000L && bestValue != Long.MIN_VALUE) break
             val c = next(head, m)
-            if (c >= 0 && p.marks[c] != blocking) {
-                best = m
-                break
-            }
-        }
-        var evaluated = false
-        for (m in moves) {
-            if (evaluated && p.nanosLeft() < 50_000L) break
-            val c = next(head, m)
-            if (c < 0 || p.marks[c] == blocking) continue
-            evaluated = true
+            if (c < 0 || p.marks[c] == blocked) continue
             val food = hasFood(p, c)
-            val room = room(p, c, cap, tail, food, blocking)
+            val growth = initialGrowth + if (food) 1 else 0
+            val room = room(p, c, cap, tail, growth, bodyBase, blocked)
             if (room < 0) continue
             val value = if (hungry) {
                 room.toLong() * 1_000_000L - distance(c, target) * 100L +
@@ -118,37 +111,52 @@ class Tactic : SnakeTactic {
         return false
     }
 
-    private fun room(p: Perception, start: Int, cap: Int, tail: Int, grows: Boolean, blocking: Int): Int {
-        if (p.marks[start] == blocking) return -1
-        val mark = p.newMark()
+    private fun room(
+        p: Perception,
+        start: Int,
+        cap: Int,
+        tail: Int,
+        growth: Int,
+        bodyBase: Int,
+        blocked: Int
+    ): Int {
         val marks = p.marks
+        if (marks[start] == blocked || !open(marks[start], 1, bodyBase, p.myBody.size, growth)) return -1
+        val mark = p.newMark()
         val queue = p.queue
-        marks[start] = mark
         queue[0] = start
+        marks[start] = mark
         var read = 0
         var size = 1
-        var reachesTail = start == tail && !grows
-        while (read < size && size <= cap && !reachesTail) {
-            if ((read and 15) == 0 && p.nanosLeft() < 50_000L) break
+        var depth = 1
+        var end = 1
+        while (read < size && size <= cap) {
+            if ((read and 15) == 0 && p.nanosLeft() < 40_000L) break
             val c = queue[read++]
             for (d in 0..3) {
                 val x = c % w + Move.DX[d]
                 val y = c / w + Move.DY[d]
                 val k = if (tor) ((y + h) % h) * w + (x + w) % w
                 else if (x in 0 until w && y in 0 until h) y * w + x else -1
-                if (k >= 0 && marks[k] != mark) {
-                    val atTail = k == tail && !grows
-                    if (marks[k] != blocking) {
-                        marks[k] = mark
-                        queue[size++] = k
-                        if (atTail) {
-                            reachesTail = true
-                            break
-                        }
-                    }
+                if (k >= 0 && marks[k] != mark && marks[k] != blocked &&
+                    open(marks[k], depth + 1, bodyBase, p.myBody.size, growth)
+                ) {
+                    marks[k] = mark
+                    queue[size++] = k
+                    if (size > cap) break
                 }
             }
+            if (read == end) {
+                depth++
+                end = size
+            }
         }
-        return if (reachesTail) cap + 1 else if (size > cap) cap else size
+        return size
+    }
+
+    private fun open(value: Int, step: Int, bodyBase: Int, length: Int, growth: Int): Boolean {
+        if (bodyBase == 0 || value <= bodyBase || value > bodyBase + length) return true
+        val index = value - bodyBase - 1
+        return step >= length - index + growth
     }
 }
