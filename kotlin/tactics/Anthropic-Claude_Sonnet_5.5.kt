@@ -37,7 +37,7 @@ class Tactic : SnakeTactic {
         if (v > 90) { for (c in b) o[c] = g; if (b.size > 1 && p.previousReward < 14f) o[tl] = 0 }
         if (v > 296) for (e in p.enemies) {
             for (c in e.body) o[c] = g
-            if (e.score >= 296) for (d in 0..3) o[nx(e.body[0], d)] = g
+            if (e.score >= 290) for (d in 0..3) o[nx(e.body[0], d)] = g
         }
         o[hd] = g
         var tg = tl; var bk = Int.MAX_VALUE
@@ -47,10 +47,12 @@ class Tactic : SnakeTactic {
             if (k < bk) { bk = k; tg = f }
         }
         val cap = b.size + 12; val hungry = p.turnsWithoutFood > 900
-        var best = p.validMoves[0]; var k0 = -1; var k1 = 0; var k2 = -1000000; var k3 = -1000000
+        var best = p.validMoves[0]; var k0 = Int.MIN_VALUE; var k1 = 0; var k2 = -1000000; var k3 = -1000000
         for (m in p.validMoves) {
             val c = nx(hd, m); val r = room(p, c, cap, g)
-            val a0 = if (hungry) (if (r > 0) 1 else 0) else r
+            var dz = false
+            if (v > 296 && r > 0) for (e in p.enemies) if (ds(c, e.body[0]) <= 1) { dz = true; break }
+            val a0 = if (hungry) (if (r > 0) 1 else 0) else if (dz) r - cap / 2 else r
             val a1 = if (c in p.foods) 1 else 0
             val a2 = -ds(c, tg); val a3 = if (hungry) 0 else -ds(c, tl)
             if (a0 > k0 || a0 == k0 && (a1 > k1 || a1 == k1 && (a2 > k2 || a2 == k2 && a3 > k3))) {

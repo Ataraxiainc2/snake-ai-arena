@@ -50,22 +50,23 @@ class Tactic : SnakeTactic {
             for (c in e.body) o[c] = g
             if (!t) for (d in 0..3) o[nx(e.body[0], d)] = g
         }
+        // hungry (starvation at 1500): the nearest food, rivals or not; room for half the body, any way out at the end
+        val tw = p.turnsWithoutFood; val hungry = tw > 700
         var tg = tl; var bk = Int.MAX_VALUE
         for (i in p.foods.indices) {
             val f = p.foods[i]; val d = ds(hd, f); val e = p.foodRivalDistance(i)
-            val k = d + (if (e < d) 8 + 2 * (d - e) else 0) + (if (e == d) 2 else 0)
+            val k = if (hungry) d else d + (if (e < d) 8 + 2 * (d - e) else 0) + (if (e == d) 2 else 0)
             if (k < bk) { bk = k; tg = f }
         }
-        val cap = b.size + (if (v > 298) 40 else 8); val hungry = p.turnsWithoutFood > 800
+        val cap = if (tw > 1350) 1 else if (hungry) b.size / 2 + 2 else b.size + (if (v > 298) 40 else 8)
         var best = p.validMoves[0]; var k0 = -1; var k1 = 0; var k2 = 0; var k3 = 0
         for (m in p.validMoves) {
             if (k0 >= 0 && p.nanosLeft() <= 0) break
             val c = nx(hd, m); val f = c in p.foods; gr = g0 + (if (f) 1 else 0); val r = room(b, c, cap, p.newMark())
-            val a0 = if (hungry) (if (r > 0) 1 else 0) else r
-            val a1 = if (hungry || !f) 0 else 1
+            val a1 = if (f) 1 else 0
             val a2 = -ds(c, tg); val a3 = if (hungry) 0 else -ds(c, tl)
-            if (a0 > k0 || a0 == k0 && (a1 > k1 || a1 == k1 && (a2 > k2 || a2 == k2 && a3 > k3))) {
-                best = m; k0 = a0; k1 = a1; k2 = a2; k3 = a3
+            if (r > k0 || r == k0 && (a1 > k1 || a1 == k1 && (a2 > k2 || a2 == k2 && a3 > k3))) {
+                best = m; k0 = r; k1 = a1; k2 = a2; k3 = a3
             }
         }
         return best
