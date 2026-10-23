@@ -266,7 +266,10 @@ object Viewer {
         return image
     }
 
-    /** SNAKES.py's centre messages, from the arena's events and from the standings. */
+    /**
+     * SNAKES.py's centre messages, from the arena's events and from the standings. As on the phone, what happens now
+     * is just said, what adds up since the game started is "so far" and all the games ever played are "Historically".
+     */
     private class Watch {
         private var leader = -1
         private var lastTop3 = System.currentTimeMillis()
@@ -286,7 +289,7 @@ object Viewer {
                     "rule100" -> "Rule 100 on for ${s.name}: its own body now kills"
                     "walls" -> "200 points: walls now kill ${s.name}"
                     "rivals" -> "300 points: every rival body now kills ${s.name}"
-                    "ten" -> e.detail?.toLongOrNull()?.takeIf { it < record }?.let { record = it; "New record to 10 points: ${s.name} in $it turns" }
+                    "ten" -> e.detail?.toLongOrNull()?.takeIf { it < record }?.let { record = it; "${s.name} reached 10 points in $it turns, the fastest so far" }
                     "died" -> "${s.name} died: ${e.detail}"
                     else -> null
                 } ?: continue
@@ -301,13 +304,13 @@ object Viewer {
             if (now - lastTop3 >= 60_000) {
                 lastTop3 = now
                 val t3 = a.snakes.sortedByDescending { it.rankingScore }.take(3)
-                say("All-time top 3: " + t3.mapIndexed { i, s -> "${i + 1}. ${s.name} (${"%.1f".format(Locale.ROOT, s.rankingScore)})" }
+                say("Historically: " + t3.mapIndexed { i, s -> "${i + 1}. ${s.name} (${"%.1f".format(Locale.ROOT, s.rankingScore)})" }
                     .joinToString("  |  "), Color.WHITE, now)
             }
             if (now - lastLearner >= 30_000) {
                 lastLearner = now
                 a.snakes.filter { it.kind == Kind.DQN }.maxByOrNull { it.bestScore }?.let {
-                    say("Top learner: ${it.name} (max ${it.bestScore} points)", colors[it.id], now)
+                    say("Historically the best learner: ${it.name} (${it.bestScore} points)", colors[it.id], now)
                 }
             }
         }
