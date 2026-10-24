@@ -171,6 +171,14 @@ For comparison, the py2kt translation of the Python files in EmuGaMind measured 
    With 8 threads the same game cost *more* CPU (~55%) and wall-clock timing turned 0.27% of the calls into random
    moves (the scheduler parks threads on slow cores mid-call). At the live pace use 1–2 threads and the thread CPU
    clock; more threads only pay off at full speed (1,494 turns/s engine-only, 848 with 8 threads and real tactics).
+7. **The engine's own nearest-food searches go by buckets** (`engine/PointGrid.kt`, 2026-10-24). Profiled with Java
+   Flight Recorder (400 snakes, 19 tactics + 3 DQN), the engine's time was the food race (17%), every snake's target
+   food (`Features.target`, 10-12%, the DQN snakes' "no rival as near" check included) and the network (~11%); the
+   four flood fills per state only 1.6%. Foods and heads now sit in square buckets (a side that divides both board
+   sides) and each search looks outward only until nothing nearer can exist: the same answers, ties included
+   (`PointGridTest`, 23,040 random queries; `ParityTest` still identical; `bench --digest` with DQN snakes identical
+   before and after on 390x180, 195x90, 192x108 and 50x35). Engine per turn, no DQN: PC 0.96 -> 0.29 ms, S25 0.42 ->
+   0.31 ms; with 3 DQN: PC 1.83 -> 0.98 ms, S25 1.86 -> 1.71 ms (on the phone the rest is the network itself).
 
 ## IssaArcade in EmuGaMind (the phone app)
 

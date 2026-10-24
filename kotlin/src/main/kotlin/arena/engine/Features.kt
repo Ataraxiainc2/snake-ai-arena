@@ -19,6 +19,8 @@ class Features(private val a: Arena) {
     val markCounter = IntArray(1)
     private var head = NONE
     private lateinit var s: Snake
+    private val foodVisits = a.foodIndex.Visits()
+    private val headVisits = a.headIndex.Visits()
 
     var targetX = 0
         private set
@@ -67,7 +69,21 @@ class Features(private val a: Arena) {
         val foods = a.foods
         val n = a.foodCount
         var best = -1
-        if (s.kind == Kind.DQN && n > 1) {
+        if (s.kind == Kind.DQN && n > 1 && a.headIndex.enabled) {
+            // no rival as near as d: no other living head within d (PointGrid looks only near the food)
+            var bestD = Long.MAX_VALUE
+            for (i in 0 until n) {
+                val f = foods[i]
+                val fx = f % w
+                val fy = f / w
+                val d = a.dist2(s.hx, s.hy, fx, fy, tor)
+                if (d >= bestD) continue
+                if (!a.headIndex.anyWithin(a, fx, fy, d, tor, s.id, headVisits)) {
+                    bestD = d
+                    best = f
+                }
+            }
+        } else if (s.kind == Kind.DQN && n > 1) {
             var bestD = Long.MAX_VALUE
             for (i in 0 until n) {
                 val f = foods[i]
@@ -90,7 +106,10 @@ class Features(private val a: Arena) {
                 }
             }
         }
-        if (best < 0) {
+        if (best < 0 && a.foodIndex.enabled) {
+            val i = a.foodIndex.nearest(a, s.hx, s.hy, tor, foodVisits)
+            if (i >= 0) best = foods[i]
+        } else if (best < 0) {
             var bestD = Long.MAX_VALUE
             for (i in 0 until n) {
                 val f = foods[i]

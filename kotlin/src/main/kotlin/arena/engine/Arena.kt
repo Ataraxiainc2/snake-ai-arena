@@ -66,6 +66,14 @@ class Arena(val cfg: ArenaConfig, tactics: List<TacticEntry>, val brain: Brain? 
     private var foodsSnapshot = IntArray(0)
     private val raceTor = FoodRace()
     private val raceWall = FoodRace()
+
+    /** The foods and the living heads by bucket, rebuilt when they move, for the nearest-food searches (Features). */
+    internal val foodIndex = PointGrid(width, height, cfg.foods)
+    internal val headIndex = PointGrid(width, height, cfg.snakes)
+    private val raceVisits = headIndex.Visits()
+    private var gx = IntArray(0)
+    private var gy = IntArray(0)
+    private var gid = IntArray(0)
     private val heads = IntArray(cfg.snakes)
     private val headIds = IntArray(cfg.snakes)
     private val enemyOf = arrayOfNulls<Enemy>(cfg.snakes)
@@ -211,6 +219,41 @@ class Arena(val cfg: ArenaConfig, tactics: List<TacticEntry>, val brain: Brain? 
         return dx.toLong() * dx + dy.toLong() * dy
     }
 
+    /** foodIndex as the foods are now (ids: their list index). */
+    private fun indexFoods() {
+        if (!foodIndex.enabled) return
+        scratch(foodCount)
+        for (i in 0 until foodCount) {
+            gx[i] = foods[i] % width
+            gy[i] = foods[i] / width
+            gid[i] = i
+        }
+        foodIndex.build(foodCount, gx, gy, gid)
+    }
+
+    /** headIndex with the heads of the living snakes (ids: snake ids). */
+    private fun indexHeads() {
+        if (!headIndex.enabled) return
+        scratch(snakes.size)
+        var n = 0
+        for (s in snakes) {
+            if (!s.alive) continue
+            gx[n] = s.hx
+            gy[n] = s.hy
+            gid[n] = s.id
+            n++
+        }
+        headIndex.build(n, gx, gy, gid)
+    }
+
+    private fun scratch(n: Int) {
+        if (gx.size < n) {
+            gx = IntArray(n)
+            gy = IntArray(n)
+            gid = IntArray(n)
+        }
+    }
+
     private fun buildGrid(withBodies: Boolean) {
         distinct.fill(0)
         mark.fill(-1)
@@ -244,6 +287,8 @@ class Arena(val cfg: ArenaConfig, tactics: List<TacticEntry>, val brain: Brain? 
             }
         }
         // 1. observe and choose (everyone is alive here: the dead respawned at the end of the last tick)
+        indexFoods()
+        indexHeads()
         val needFull = brain != null || cfg.fullState
         if (tacticIdx.isNotEmpty()) {
             if (foodsSnapshot.size != foodCount) foodsSnapshot = IntArray(foodCount)
@@ -262,8 +307,8 @@ class Arena(val cfg: ArenaConfig, tactics: List<TacticEntry>, val brain: Brain? 
                 headIds[s.id] = s.id
                 if (s.kind == Kind.TACTIC) if (s.score < Rules.WALL_COLLISION) anyTor = true else anyWall = true
             }
-            if (anyTor) raceTor.compute(width, height, true, foodsSnapshot, heads, headIds, snakes.size)
-            if (anyWall) raceWall.compute(width, height, false, foodsSnapshot, heads, headIds, snakes.size)
+            if (anyTor) raceTor.compute(width, height, true, foodsSnapshot, heads, headIds, snakes.size, headIndex, raceVisits)
+            if (anyWall) raceWall.compute(width, height, false, foodsSnapshot, heads, headIds, snakes.size, headIndex, raceVisits)
             val d0 = System.nanoTime()
             decideTactics(needFull)
             lastDecideNanos = System.nanoTime() - d0
@@ -324,6 +369,9 @@ class Arena(val cfg: ArenaConfig, tactics: List<TacticEntry>, val brain: Brain? 
             s.diedLastStep = died
         }
         if (brain != null) {
+            // the foods after eating and the heads after moving (the living ones), as the next states' targets see them
+            indexFoods()
+            indexHeads()
             // next states are independent per snake: computed on all threads, then remembered in list order
             parallel(snakes.size) { f, i ->
                 val s = snakes[i]

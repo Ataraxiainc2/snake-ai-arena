@@ -18,13 +18,30 @@ class FoodRace {
     private var hy = IntArray(0)
     private var ids = IntArray(0)
 
-    /** [heads]: cells of the heads, [headIds]: whose they are (snake ids), first [n] of them. */
-    fun compute(w: Int, h: Int, toroidal: Boolean, foods: IntArray, heads: IntArray, headIds: IntArray, n: Int) {
+    private val one = IntArray(3)
+
+    /**
+     * [heads]: cells of the heads, [headIds]: whose they are (snake ids), first [n] of them. [index], when it holds
+     * exactly those heads, answers each food without scanning them all (the same numbers, see PointGrid).
+     */
+    fun compute(
+        w: Int, h: Int, toroidal: Boolean, foods: IntArray, heads: IntArray, headIds: IntArray, n: Int,
+        index: PointGrid? = null, visits: PointGrid.Visits? = null,
+    ) {
         val f = foods.size
         if (best.size != f) {
             best = IntArray(f)
             owner = IntArray(f)
             second = IntArray(f)
+        }
+        if (index != null && visits != null && index.enabled) {
+            for (i in 0 until f) {
+                index.race(foods[i] % w, foods[i] / w, toroidal, visits, one)
+                best[i] = one[0]
+                owner[i] = one[1]
+                second[i] = one[2]
+            }
+            return
         }
         if (hx.size < n) {
             hx = IntArray(n)
