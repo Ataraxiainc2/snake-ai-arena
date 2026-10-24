@@ -829,9 +829,11 @@ def list_with_key(prov, key):
 # ---------------------------------------------------------------------------------------------------------------
 # Automatic mode: every free model writes its own .kt and .py
 # ---------------------------------------------------------------------------------------------------------------
-# Free offers that are not chat models although their host lists them as text (image and video generators).
+# Free offers that are not chat models although their host lists them as text: image and video generators,
+# NVIDIA's perception/driving/speech services, safety classifiers, translators, and routers (not one model).
 NOT_CHAT = re.compile(r"seedance|seedream|flux|kling|hailuo|\bwan[ -]?2|stable[ -]?diffusion|sdxl|recraft|ideogram|"
-                      r"midjourney|\d{3,4}x\d{3,4}|_\d{3,4}_\d{3,4}", re.I)
+                      r"midjourney|\d{3,4}x\d{3,4}|_\d{3,4}_\d{3,4}|speaker|bevformer|sparsedrive|streampetr|"
+                      r"paligemma|voicechat|safety|translat|usdvalidate|^openrouter/(free|auto)\b|models? router", re.I)
 AUTO_SECONDS = 240  # the arena's 4-minute rule, per answer
 RUNS = CACHE / "auto_runs"
 
@@ -973,6 +975,27 @@ def auto_main(argv):
     run_dir = RUNS / stamp
     run_dir.mkdir(parents=True, exist_ok=True)
     results, limited = [], set()
+    try:
+        run_plan(plan, run_dir, results, limited)
+    except KeyboardInterrupt:
+        print("\nDetenido con Ctrl+C: lo escrito hasta ahora queda; nada a medias.")
+    count = {}
+    for r in results:
+        count[r["status"]] = count.get(r["status"], 0) + 1
+    print(f"\nResumen: {count}. Respuestas y detalle en {run_dir}")
+
+
+def save_results(run_dir, results):
+    tmp = run_dir / "results.json.tmp"
+    tmp.write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(run_dir / "results.json")
+
+
+def run_plan(plan, run_dir, results, limited):
+    def add(rec):  # results.json is current after every file, also when the run is stopped
+        results.append(rec)
+        save_results(run_dir, results)
+
     for i, (c, todo) in enumerate(plan, 1):
         prov = CATALOG.providers[c["provider"]]
         key, _ = key_for(prov["id"], prov)
@@ -981,7 +1004,7 @@ def auto_main(argv):
             rec = {"name": c["name"], "lang": lang, "provider": c["provider"], "model": c["model"]}
             if c["provider"] in limited:
                 rec.update(status="omitido", detail="el host limitó los pedidos en esta corrida")
-                results.append(rec)
+                add(rec)
                 continue
             print(f"[{i}/{len(plan)}] {target.name} <- {c['model']} @ {c['host']} …", end=" ")
             prompt, _ = build_prompt(c["name"], lang=lang)
@@ -996,7 +1019,7 @@ def auto_main(argv):
                     limited.add(c["provider"])
                 rec.update(status="error", detail=f"HTTP {out.get('status')}: {out.get('error', '')[:300]}")
                 print(rec["detail"][:120])
-                results.append(rec)
+                add(rec)
                 continue
             code = extract_code(out["text"], lang)
             (run_dir / f"{c['name']}{LANGS[lang]['ext']}.answer.txt").write_text(out["text"], encoding="utf-8")
@@ -1004,31 +1027,26 @@ def auto_main(argv):
             if notes:
                 rec.update(status="rechazado", detail="; ".join(notes))
                 print("RECHAZADO:", rec["detail"])
-                results.append(rec)
+                add(rec)
                 continue
             good, line = arena_check(c["name"], lang, code, run_dir / "stage")
             rec["check"] = line
             if not good:
                 rec.update(status="rechazado", detail=line)
                 print("NO PASA el check:", line[:160])
-                results.append(rec)
+                add(rec)
                 continue
             if chars_of(c["name"], lang) != had:  # someone changed it while the model was answering
                 rec.update(status="omitido", detail="el archivo cambió durante la corrida; no se tocó")
                 print(rec["detail"])
-                results.append(rec)
+                add(rec)
                 continue
             tmp = target.with_name(target.name + ".tmp")
             tmp.write_text(code.rstrip() + "\n", encoding="utf-8", newline="\n")
             tmp.replace(target)
             rec.update(status="escrito", chars=len(code.rstrip()) + 1)
             print(f"ESCRITO ({rec['chars']} car.) {line[:90]}")
-            results.append(rec)
-    (run_dir / "results.json").write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
-    count = {}
-    for r in results:
-        count[r["status"]] = count.get(r["status"], 0) + 1
-    print(f"\nResumen: {count}. Respuestas y detalle en {run_dir}")
+            add(rec)
 
 
 # ---------------------------------------------------------------------------------------------------------------
