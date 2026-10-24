@@ -1,0 +1,46 @@
+SNAKE ARENA (KOTLIN) - RULES
+Write one Kotlin class that steers a snake. Many snakes share the board; the highest score wins.
+
+CODE
+   class Tactic : SnakeTactic {
+       override fun decide(p: Perception): Int { ... }   // return one of p.validMoves
+   }
+ - Kotlin 2.x, no package line. Imports: only kotlin.math.*, kotlin.random.*, kotlin.collections.*.
+ - One Tactic per snake per game; its fields may keep state. No top-level var and no var in an object.
+
+API (provided; do not declare it)
+   object Move { UP = 0; DOWN = 1; LEFT = 2; RIGHT = 3; DX = 0,0,-1,1; DY = -1,1,0,0 }   // y grows downwards
+   class Enemy { id; score; direction; body: IntArray /* head first */ }
+   class Perception {
+       width; height; turn: Long; myId; myScore; myDirection
+       myBody: IntArray                   // head first; cell = y * width + x
+       foods: IntArray; enemies: Array<Enemy>
+       bodies: ByteArray                  // body cells of all snakes (you included)
+       selfCollision; selfCollisionWarning; wallCollision; enemyCollision; toroidal   // what kills you now
+       validMoves: IntArray               // moves that do not reverse into your neck
+       turnsWithoutFood; starvationTurns
+       previousReward: Float              // +15 ate, -15 died, +1 closer to food, -1.2 farther
+       fun nanosLeft(): Long              // time left in this call
+       fun foodRivalDistance(i): Int      // foods[i]: moves from the nearest rival head
+       marks: IntArray; queue: IntArray   // scratch for searches (queue = width*height+1)
+       fun newMark(): Int                 // a value no cell of marks holds yet
+   }
+
+LIMITS
+ - Time: about 5 ms per call (less with many snakes); over budget = a random move. Check p.nanosLeft().
+ - Memory: under 256 KB per Tactic. No board-sized arrays: use p.marks and p.queue.
+ - Shorter code ranks higher: rank = best score x (1 - 0.05 x log2(your chars / the shortest file's chars)).
+ - Forbidden: java./javax./android./kotlinx., System, Thread, reflection, print, files, network, clocks.
+
+GAME
+ - Board: p.width x p.height cells; never assume a size. Food: +1 score, +1 length.
+ - What kills, by your score: below 100 nothing (the board wraps). From 100 your own body. From 200 the walls. From
+   300 rivals' bodies; a head-on kills everyone there with 300+.
+ - Dying: back to length 1 and score 0. 1500 turns without food = death.
+ - A tail cell that is leaving is safe, except the turn after that snake ate.
+
+WHAT WINS
+ - Almost every death is your own body at 200+. After each candidate move, flood-fill the free space; your body cell
+   k (head = 0) is free from step length-k (+1 per meal not yet digested). Restore those marks before each flood.
+ - Demand about 2 x your length of free space; keep that even when hungry, until ~150 turns before starvation.
+ - From 300: block rivals' bodies and the cells next to rival heads; skip food a rival reaches first.

@@ -18,8 +18,9 @@ What it does:
  - Model catalog, as EmuGaMind builds it (models.dev: providers whose API the app can speak, majors pinned to their
    host), completed with every provider's own public GET /models (no key: free) and the rich public lists of llmtr
    (free models and until when, parsed from each description) and OpenRouter (":free" models, expiration_date).
- - Prompt: kotlin/tactics/rules_kotlin.txt + the entry's current code (if any) + the code of the top 3 of
-   kotlin/telemetry_kotlin.json + "only your code; copying is allowed, the goal is to win". Editable before sending.
+ - Prompt: tools/rules_chat_kotlin.txt (the short rules for a chat model; kotlin/tactics/rules_kotlin.txt is for
+   agents that work in the folder) + the entry's own recommendation from rules_kotlin.txt + its current code + the
+   leader's code + "only your code; copying is allowed, the goal is to win". Editable before sending.
  - Sends it with the user's key (D:\\SC\\AK\\A, or one pasted for this session), shows the answer and the Kotlin block,
    copies it, and names the file for kotlin/tactics.
 
@@ -700,6 +701,7 @@ def redact(text, key):
 # The two arenas: the same names, ranking rows and prompt; their own folder, rules, telemetry and code fence.
 LANGS = {
     "kotlin": {"dir": TACTICS, "ext": ".kt", "rules": RULES, "rules_label": "kotlin/tactics/rules_kotlin.txt",
+               "chat": HERE / "rules_chat_kotlin.txt",
                "telemetry": TELEMETRY, "fence": "kotlin", "arena": "Kotlin Snake arena"},
     "python": {"dir": ARENA / "tacticas", "ext": ".py", "rules": ARENA / "tacticas" / "rules.txt",
                "rules_label": "tacticas/rules.txt", "telemetry": ARENA / "telemetry.json", "fence": "python",
@@ -730,10 +732,19 @@ SECTION = re.compile(r"^(\d+[a-z]?)\.\s+([A-Z][A-Z ]+)")
 
 
 def chat_rules(lang, name):
-    """The rules a chat model needs, from the same rules file the arena uses (one source, never two copies)."""
+    """The rules a chat model needs: the short chat rules of tools/ when the arena has them (Kotlin), else the chat
+    sections of the arena's rules file; then this entry's own recommendation from the arena's rules file."""
     f = LANGS[lang]["rules"]
     if not f.exists():
         return f"({LANGS[lang]['rules_label']} not found)"
+    rules, mine = read_rules(f, name)
+    chat = LANGS[lang].get("chat")
+    text = chat.read_text(encoding="utf-8").strip() if chat and chat.exists() else "\n".join(rules)
+    return text + ("\n\nRECOMMENDATION FOR YOU (from the telemetry)\n" + "\n".join(mine) if mine else "")
+
+
+def read_rules(f, name):
+    """(lines of the sections a chat model needs, lines of the recommendation bullet about [name] or for new ones)."""
     sections, cur = [], None
     for line in f.read_text(encoding="utf-8").splitlines():
         m = SECTION.match(line)
@@ -742,7 +753,7 @@ def chat_rules(lang, name):
             sections.append(cur)
         elif cur:
             cur[1].append(line)
-    out = []
+    rules, mine = [], []
     for title, lines in sections:
         if title.startswith("RECOMMENDATIONS"):
             bullets, b = [], None
@@ -752,14 +763,12 @@ def chat_rules(lang, name):
                     bullets.append(b)
                 elif b is not None and ln.startswith("   "):
                     b.append(ln)
-            mine = [b for b in bullets if re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", "".join(b))]
-            mine = mine or [b for b in bullets if b[0].startswith(" - New entries")]
-            if mine:
-                out.append("RECOMMENDATION FOR YOU (from the telemetry)")
-                out += [ln for b in mine for ln in b]
+            hit = [b for b in bullets if re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", "".join(b))]
+            hit = hit or [b for b in bullets if b[0].startswith(" - New entries")]
+            mine = [ln for b in hit for ln in b]
         elif CHAT_SECTIONS.search(title):
-            out += [ln for ln in lines if ln.strip()]
-    return "\n".join(out)
+            rules += [ln for ln in lines if ln.strip()]
+    return rules, mine
 
 
 def build_prompt(name, top_n=1, include_own=True, lang="kotlin"):

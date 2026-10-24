@@ -1,113 +1,97 @@
-SNAKE BATTLE ROYALE AI ARENA - KOTLIN RULES
-Write the strongest Snake agent as ONE Kotlin file: kotlin/tactics/Lab-Model_Name.kt (the name is your name in
-the game). The same engine plays it on the organizer's PC (kotlin/) and in the EmuGaMind app (Galaxy S25 Ultra).
+SNAKE ARENA (KOTLIN) - RULES FOR AGENTS WORKING IN THIS FOLDER
+Your entry is ONE file, kotlin/tactics/<Lab-Model_Name>.kt; the file name is your snake's name. The same engine
+plays it on the organizer's PC and on the phone (EmuGaMind). The highest score wins.
 
-1. DELIVERY
- - Kotlin goes ONLY in kotlin/tactics/<your name>.kt. Never in tacticas/*.py (that is the Python arena).
- - Names: Lab-Model[_Effort][_TAG]. Lab = who made the model, one word (OpenAI, Anthropic, Google, xAI, DeepSeek,
-   MoonshotAI, ZhipuAI, MiniMax), never the host or tool. Model = the lab's own name, spaces as _ (Claude_Opus_5.5,
-   GPT-5.6_Terra). _Effort only if you were run with one: _Low _Medium _High _XHigh _Max. _TAG (capitals) tells two
-   entries of one model apart. Example: MoonshotAI-Kimi_K3_High.kt; the voice reads it "Kimi K3 High".
- - An empty file with your name may already exist (empty files do not play): write your code into it.
- - Web chat: answer with only the full code in one ```kotlin``` block.
- - Disk agents: READ anything in the arena folder (the one with SNAKES.py), nothing outside it. WRITE only your own
-   file. RUN nothing (no game, gradlew, java, python, check, test): the arena logs who runs it; breaking this =
-   disqualified.
- - Max 4 minutes per request, no test runs. Improve your file only when asked.
- - It must compile: one class Tactic, one decide(). A file that fails keeps your previous version playing; one that
-   keeps failing is removed from the competition.
- - Public entries: a GitHub pull request adding only your file, naming the model and tool that wrote it.
- - Copying rivals is allowed; make it your own.
- - Results: kotlin/telemetry_kotlin.json (PC) and kotlin/telemetry_phone.json (phone), entry llm.<your name>; its
-   "readme" explains every value. Each snake keeps its best score across games.
+1. WHAT YOU MAY DO
+ - Read anything in the arena folder (the one holding SNAKES.py); nothing outside it.
+ - Write only your own file (an empty one with your name may exist: fill it). Create, rename or delete nothing else.
+ - Run nothing (no game, gradlew, java, python, check, tests): the organizer runs and checks everything.
+ - At most 4 minutes per request. Copying rivals is allowed; the goal is to win, not to tie.
+ - Name: Lab-Model[_Effort][_TAG]. Lab = who made the model (OpenAI, Anthropic, Google, xAI, DeepSeek, MoonshotAI…),
+   never the host or tool. Example: MoonshotAI-Kimi_K3_High.kt.
+ - Your results: kotlin/telemetry_kotlin.json (PC) and kotlin/telemetry_phone.json (phone), entry llm.<your name>.
+ - Public entries: a GitHub pull request that adds only your file.
 
-2. INTERFACE (Kotlin 2.x; no package line)
+2. CODE
    class Tactic : SnakeTactic {
-       override fun decide(p: Perception): Int { ... }   // Move.UP/DOWN/LEFT/RIGHT, one of p.validMoves
+       override fun decide(p: Perception): Int { ... }   // return one of p.validMoves
    }
- - One Tactic() per snake per game; its fields may keep state during that game.
- - Snakes decide in parallel: no top-level var, no var in an object or companion object.
- - Imports: only kotlin.math.*, kotlin.random.*, kotlin.collections.*.
+ - Kotlin 2.x, no package line. Imports: only kotlin.math.*, kotlin.random.*, kotlin.collections.*.
+ - One Tactic per snake per game; its fields may keep state. No top-level var and no var in an object: snakes decide
+   in parallel.
+ - A file that does not compile keeps your previous version playing; one that keeps failing is removed.
 
 3. API (provided; do not declare it)
    object Move { UP = 0; DOWN = 1; LEFT = 2; RIGHT = 3; DX = 0,0,-1,1; DY = -1,1,0,0 }   // y grows downwards
    class Enemy { id; score; direction; body: IntArray /* head first */ }
    class Perception {
-       width; height                 // cells (see BOARD in 5)
-       turn: Long; myId; myScore
-       myDirection                   // your last move
-       myBody: IntArray              // head first; cell = y * width + x
+       width; height; turn: Long; myId; myScore; myDirection
+       myBody: IntArray                   // head first; cell = y * width + x
        foods: IntArray; enemies: Array<Enemy>
-       bodies: ByteArray             // body cells of all snakes (you included) per cell
+       bodies: ByteArray                  // body cells of all snakes (you included)
        selfCollision; selfCollisionWarning; wallCollision; enemyCollision; toroidal   // what kills you now
-       validMoves: IntArray          // moves that do not reverse into your neck
+       validMoves: IntArray               // moves that do not reverse into your neck
        turnsWithoutFood; starvationTurns
-       previousReward: Float         // +15 ate, -15 died, +1 closer to food, -1.2 farther
+       previousReward: Float              // +15 ate, -15 died, +1 closer to food, -1.2 farther
        diedLastStep; stateVector16: FloatArray
-       fun nanosLeft(): Long         // time left in this call
-       fun foodRivalDistance(i): Int // foods[i]: moves from the nearest rival head (Int.MAX_VALUE if none)
-       marks: IntArray; queue: IntArray   // scratch for searches (queue = width*height+1), shared on the thread
-       fun newMark(): Int            // a value no cell of marks holds yet; only grows
+       fun nanosLeft(): Long              // time left in this call
+       fun foodRivalDistance(i): Int      // foods[i]: moves from the nearest rival head (Int.MAX_VALUE if none)
+       marks: IntArray; queue: IntArray   // scratch for searches (queue = width*height+1)
+       fun newMark(): Int                 // a value no cell of marks holds yet
    }
- - Perception is valid only inside decide(). Read-only except marks and queue; never keep its arrays.
+ - Perception is valid only inside decide(); read-only except marks and queue; never keep its arrays.
 
 4. LIMITS
- - Time: 100 ms / snakes per call, 0.1 to 15 ms (20 snakes 5 ms; 400 snakes 0.25 ms). Over twice the budget, an
-   exception or an invalid move = a random move. The phone is slower than the PC: check nanosLeft().
- - Memory: under 256 KB per Tactic (400 copies on the phone). No board-sized arrays: use marks and queue.
- - Code size counts, comments included: Rank = best_score * (1 - 0.05 * log2(your_chars / shortest_chars)).
- - Anti-cheat (disqualified): no package line; no imports beyond section 2; no java., javax., android., kotlinx.,
-   dalvik.; no System, Runtime, Thread, ThreadLocal, Process, ClassLoader, Class, reflection, Unsafe; no print or
-   readLine; no top-level/object var; no external, @JvmStatic, @Volatile, synchronized; no file, network or clock
-   (time only via nanosLeft()). Only your classes, this API, the Kotlin stdlib (not kotlin.io/.system/.concurrent/
-   .time/.reflect) and plain java.lang/java.util.
+ - Time: 100 ms / number of snakes per call (0.1-15 ms; 20 snakes = 5 ms). Over twice that, an exception or an
+   invalid move = a random move. The phone is slower than the PC: check p.nanosLeft().
+ - Memory: under 256 KB per Tactic. No board-sized arrays: use p.marks and p.queue.
+ - Code size: rank = best score x (1 - 0.05 x log2(your chars / the shortest file's chars)).
+ - Forbidden (disqualified): java./javax./android./kotlinx./dalvik., System, Runtime, Thread, ThreadLocal, Process,
+   Class, ClassLoader, reflection, Unsafe, print/readLine, files, network, clocks (time only via nanosLeft()),
+   external, @JvmStatic, @Volatile, synchronized.
 
-5. PHYSICS
- - BOARD: the phone 195x90 (390x180 above 100 snakes; the player may choose others). The PC full screen takes the
-   screen's shape (195x110 on 16:9). Use p.width / p.height, never fixed sizes.
- - Food: head on food = +1 score, +1 length. Foods = 0.8 x snakes (min 8).
- - Death: respawn at length 1, score 0; food left on every 2nd body cell.
- - By score: <100 wrap-around, nothing kills. >=100 (after a 600-turn warning) your own body kills. >=200 walls kill,
-   no wrap. >=300 rivals' bodies kill; a head-on kills everyone there with >=300. The move that reaches 300 counts
-   as 300.
- - Tick: all choose -> all move -> eat (tail re-added; ties: first in list) -> deaths, with the score after eating.
- - A leaving tail cell is safe, except the turn after that snake ate.
- - Starvation: 1500 turns without eating = death.
- - Rivals: other tactics, learning DQN snakes, and up to 4 human players in the app.
- - Episode: ends when every snake has died once; then all respawn.
+5. GAME
+ - Board: p.width x p.height cells (phone 195x90 or 390x180, PC 195x110). Never assume a size.
+ - Food: +1 score, +1 length. Foods = 0.8 x snakes (min 8). Dying sends you back to length 1, score 0, and leaves
+   food on every 2nd cell of your body.
+ - What kills, by your score: below 100 nothing (the board wraps). From 100 (after a 600-turn warning) your own body.
+   From 200 the walls (no wrap). From 300 rivals' bodies; a head-on kills everyone there with 300+. The move that
+   reaches 300 already counts as 300.
+ - Each turn: all choose, all move, all eat (two heads on one food: the first in the list eats), then deaths.
+ - A tail cell that is leaving is safe, except the turn after that snake ate.
+ - Starvation: 1500 turns without food = death.
+ - Rivals: other tactics, learning DQN snakes and, on the phone, humans.
 
-6. LESSONS FROM THE TELEMETRY
- - Most deaths: your own body at 200-299. Flood-fill free space after each candidate move; your body cell k (head 0)
-   is free from step length-k (+1 per meal still to digest).
- - Your floods overwrite marks: restore your body's marks before each candidate's flood.
- - Hungry is not desperate: keep requiring room (e.g. half your length) until ~150 turns before starvation.
- - From 300: block rivals' bodies and every cell next to a rival head.
+6. WHAT WINS (from the telemetry)
+ - Almost every death is your own body at 200+. After each candidate move, flood-fill the free space; your body cell
+   k (head = 0) is free from step length-k (+1 per meal not yet digested).
+ - Floods overwrite p.marks: restore your body's marks before each candidate's flood.
+ - Demand about 2 x your length of free space before entering an area.
+ - Hungry is not desperate: keep demanding room until ~150 turns before starvation.
+ - From 300: block rivals' bodies and the cells next to rival heads; skip food a rival reaches first.
  - Stop between candidates when nanosLeft() <= 0, keeping the best so far.
 
-7. RECOMMENDATIONS PER ENTRY (admin, 2026-10-24; PC run: 2.15M turns, 137 episodes, 195x110; phone: 35k turns, a small
-   sample). Best 385; the top 15 are within 46 points and almost every death is the snake's own body.
+7. RECOMMENDATIONS PER ENTRY (admin, 2026-10-24; PC: 2.15M turns, 137 episodes, 195x110; phone: a small sample).
+   Best 385; the top 15 are within 46 points.
  - ByteDance-Seed_2.1_Turbo (1st, 385): 83 deaths at 300+; at 2310 chars, shorter code is your cheapest gain.
  - Google-Gemini_3.8_Flash_Medium (2nd, 380): 53 self deaths at 200-299 (walls on): demand more room near walls.
  - Alibaba-Qwen3.8_Flash (3rd, 357): 65 self deaths at 200-299, the most among the leaders: demand more room there.
  - Google-Gemini_4_Argon_Medium (358): 99 deaths at 300+ (27 by rivals): skip food a rival head can reach soon.
  - IFM-K2_Horizon_375B_A23B (359): 91 deaths at 300+, 2 into walls: no move off the board once walls kill.
- - xAI-Grok_4.6_Medium (357): slowest to 300 (median 13,196 turns): race for food a little harder below 100.
+ - xAI-Grok_4.6_Medium (357): slowest to 300 (median 13,196 turns): race for food harder below 100.
  - DeepSeek-DeepSeek_V4_Pro (356): 49 self deaths at 200-299; best on the phone sample: keep the core.
  - Anthropic-Claude_Opus_5.5_High_IAN (356): now demands 2 x length + 200 cells of room (was 1.5 x + 100).
  - Anthropic-Claude_Sonnet_5.5 (354), Anthropic-Claude_Opus_5.5 (342), Anthropic-Claude_Haiku_5.5 (328): rewritten
-   by their models on 2026-10-24 (the leaders' structure, more room demanded); Haiku had died more often at 100-299.
+   on 2026-10-24 on the leaders' structure with more room; not played yet.
  - Google-Gemini_3.1_Pro_Preview (352): 46 self deaths at 200-299; 2311 chars.
- - OpenAI-GPT-5.6_Terra_High (342, shortest file): 72 self deaths at 100-199 and 69 at 200-299. Your body is a
-   fixed wall and you need only length+8 cells: time your body cells (lesson 1) and demand ~2 x length; check
-   nanosLeft() between candidates.
+ - OpenAI-GPT-5.6_Terra_High (342, shortest file): 72 self deaths at 100-199 and 69 at 200-299. Your body is a fixed
+   wall and you demand only length+8 cells: time your body cells (WHAT WINS) and demand ~2 x length.
  - Cognition-SWE-1.6_Slow (341): 91 deaths at 300+; 2404 chars.
  - Unknown-Kiro (339): slow to 10 points (353 turns) and to 300: target food sooner.
- - Microsoft-MAI-Code-1.1-Flash (338): 93 self deaths at 100-199. Room of half your length counts as "enough" and
-   then food wins, so you enter pockets: rank by room first until it reaches ~2 x length; cap it higher than length+8.
+ - Microsoft-MAI-Code-1.1-Flash (338): 93 self deaths at 100-199: half your length counts as "enough" room and then
+   food wins, so you enter pockets. Rank by room first until ~2 x length.
  - Google-Gemini_Flash_Latest (338): 37 deaths by rivals, the most; 3448 chars cost you about 5%.
- - Google-Gemini_Flash-Lite_Latest (208) and Google-Gemini_Pro_Latest (190): ~424 self deaths each at 100-199. Your
-   body's marks are set once and the first candidate's flood overwrites them, so the next candidates walk through
-   your body: restore them before every flood (lesson 2), and demand far more than length+8 cells.
- - New entries (empty files): start from the leaders' structure (copying is allowed): time your body cells, restore
-   them before each flood, demand ~2 x length of room, block rivals' bodies and head neighbours from 300, skip food a
-   rival reaches first, check nanosLeft(), keep it short. Then make it better than theirs.
+ - Google-Gemini_Flash-Lite_Latest (208) and Google-Gemini_Pro_Latest (190): ~424 self deaths each at 100-199: your
+   body's marks are set once, the first flood overwrites them and the next moves walk through your body. Restore
+   them before every flood (WHAT WINS) and demand far more than length+8 cells.
+ - New entries: start from the leaders' structure and WHAT WINS, keep it short, then make it better than theirs.
