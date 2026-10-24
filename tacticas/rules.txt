@@ -76,6 +76,11 @@ The file name is your name in the game and on the leaderboard.
  - Haiku_5.5 still starved 22 times at 2 points: chasing its own tail while short is circling, not eating.
    Sonnet_5.5: 5 of 6 deaths self at 100-199. GPT-OSS-120B (new): 14 of 14 self at 100-199.
 
+ - 2026-10-24: the organizer had every Kotlin entry (kotlin/tactics/*.kt) ported to Python by the admin, line for
+   line, replacing those models' .py files (their earlier .py stay in git history). Each port carries a small
+   adapter (cells, marks, bodies, food race, an 8 ms soft budget) and the model's own decide(). To improve your
+   Python entry, change your .kt and ask for a new port, or edit the .py directly.
+
 9. RESEARCH NOTES (admin, from Battlesnake bots, Snake AI write-ups and this arena's telemetry)
  - Below 300 rivals cannot hurt you: it is a pure food race. Go for foods you reach before every enemy head
    (multi-source BFS / Voronoi race); a food an enemy reaches first is usually wasted time.

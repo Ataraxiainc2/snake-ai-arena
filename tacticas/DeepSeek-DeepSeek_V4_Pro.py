@@ -1,100 +1,95 @@
+MODEL_NAME="DeepSeek-DeepSeek_V4_Pro"
+# Port of kotlin/tactics/DeepSeek-DeepSeek_V4_Pro.kt (the model's own strategy), translated to Python by the arena admin.
 import time
-MODEL_NAME="AI_Competitor"
-V={"UP":(0,-1),"DOWN":(0,1),"LEFT":(-1,0),"RIGHT":(1,0)}
-D=((0,-1),(0,1),(-1,0),(1,0))
-TB=0.006
-I=999
-def _f(st,bk,W,H,t,cp,t0):
- se=bytearray(W*H);se[st]=1;q=[st];qi=0
- while qi<len(q)and len(q)<cp:
-  if(qi&127)==0 and time.perf_counter()-t0>TB:break
-  c=q[qi];qi+=1;x=c%W;y=c//W
-  for dx,dy in D:
-   nx=x+dx;ny=y+dy
-   if 0<=nx<W and 0<=ny<H:ni=ny*W+nx
-   elif t:ni=ny%H*W+nx%W
-   else:continue
-   if not se[ni]and not bk[ni]:
-    se[ni]=1;q.append(ni)
-    if len(q)>=cp:break
- return len(q),se
-class SnakeAgent:
+DX=(0,0,-1,1);DY=(-1,1,0,0);AC=('UP','DOWN','LEFT','RIGHT');BIG=1<<62
+class E:
+ def __init__(s,i,b,v,d):s.id=i;s.body=b;s.score=v;s.direction=d
+class P:
+ def __init__(s,p,a):
+  s.t0=time.perf_counter();k=p['block_size'];w=s.width=p['width']//k;h=s.height=p['height']//k
+  C=lambda z:z[1]//k*w+z[0]//k
+  s.myBody=[C(z)for z in p['my_body']];s.myScore=int(p['my_score']);s.foods=[C(z)for z in p['foods']]
+  s.enemies=[E(e['id'],[C(z)for z in e['body']],int(e['score']),AC.index(e['direction']))for e in p['enemies']]
+  r=p['active_rules'];s.toroidal=r['toroidal_world'];s.selfCollision=r['self_collision']
+  s.selfCollisionWarning=r['self_collision_warning'];s.enemyCollision=r['enemy_collision']
+  s.validMoves=[AC.index(x)for x in p['valid_actions']];s.myDirection=AC.index(p['my_direction'])
+  s.turnsWithoutFood=p['turns_without_food'];s.starvationTurns=p['starvation_turns'];s.previousReward=p['previous_reward']
+  if len(a.mk)!=w*h:a.mk=[0]*(w*h);a.q=[0]*(w*h+1);a.nb={}
+  s.marks=a.mk;s.queue=a.q;s.a=a;B={}
+  for c in s.myBody:B[c]=B.get(c,0)+1
+  for e in s.enemies:
+   for c in e.body:B[c]=B.get(c,0)+1
+  s.bodies=B;s.rv=None;t=s.toroidal
+  if t not in a.nb:
+   N=[]
+   for c in range(w*h):
+    for d in range(4):
+     x=c%w+DX[d];y=c//w+DY[d]
+     N.append((y+h)%h*w+(x+w)%w if t else y*w+x if 0<=x<w and 0<=y<h else -1)
+   a.nb[t]=N
+  s.nb=a.nb[t]
+ def newMark(s):s.a.n+=1;return s.a.n
+ def nanosLeft(s):return int((.008-time.perf_counter()+s.t0)*1e9)
+ def foodRivalDistance(s,i):
+  if s.rv is None:
+   w,h,t=s.width,s.height,s.toroidal;H=[(e.body[0]%w,e.body[0]//w)for e in s.enemies if e.body];s.rv=[]
+   for f in s.foods:
+    x,y=f%w,f//w;m=2147483647
+    for X,Y in H:
+     u=abs(x-X);v=abs(y-Y);d=min(u,w-u)+min(v,h-v)if t else u+v
+     if d<m:m=d
+    s.rv.append(m)
+  return s.rv[i]
+class A:
+ def __init__(s):s.mk=[];s.q=[];s.n=0;s.nb={}
  def decide_action(s,p):
-  try:a=s._d(p)
-  except Exception:a=None
-  if a in V:return a
-  v=p.get("valid_actions");return v[0]if v else"UP"
- def _d(s,p):
-  t0=time.perf_counter()
-  W=p.get("width",1000)//20;H=p.get("height",700)//20
-  va=[a for a in(p.get("valid_actions")or("UP","DOWN","LEFT","RIGHT"))if a in V]
-  if not va:return None
-  mh=p.get("my_head")or(0,0);hx=mh[0]//20;hy=mh[1]//20
-  if not(0<=hx<W and 0<=hy<H):return va[0]
-  hi=hy*W+hx;md=p.get("my_direction");sc=float(p.get("my_score",0));r=p.get("active_rules")or{}
-  sl=r.get("self_collision",False);el=r.get("enemy_collision",False)or sc>=298;tr=r.get("toroidal_world",True);co=sl or r.get("self_collision_warning",False)
-  b=[y*W+x for x,y in((g[0]//20,g[1]//20)for g in(p.get("my_body")or())if len(g)>=2)if 0<=x<W and 0<=y<H]
-  if not b:b=[hi]
-  elif b[0]!=hi:b.insert(0,hi)
-  bl=len(b);bst=set(b)
-  fs=set(y*W+x for x,y in((f[0]//20,f[1]//20)for f in(p.get("foods")or())if len(f)>=2)if 0<=x<W and 0<=y<H)
-  bb=bytearray(W*H);ehs=[]
-  for e in(p.get("enemies")or()):
-   eh=e.get("head")
-   if eh:ehs.append(eh[1]//20*W+eh[0]//20)
-  if el:
-   for e in(p.get("enemies")or()):
-    for g in(e.get("body")or()):
-     x=g[0]//20;y=g[1]//20
-     if 0<=x<W and 0<=y<H:bb[y*W+x]=1
-    eh=e.get("head")
-    if eh:
-     ei=eh[1]//20*W+eh[0]//20
-     for dx,dy in D:
-      nx=ei%W+dx;ny=ei//W+dy
-      if 0<=nx<W and 0<=ny<H:bb[ny*W+nx]=1
-  fe={f:min((abs(f%W-e%W)+abs(f//W-e//W)for e in ehs),default=I)for f in fs}
-  cd=[];dz=[]
-  for a in va:
-   d=V[a];x=hx+d[0];y=hy+d[1]
-   if 0<=x<W and 0<=y<H:ni=y*W+x
-   elif tr:ni=y%H*W+x%W
-   else:continue
-   if sl:
-    ea=ni in fs
-    if ea:
-     if ni in bst:continue
-    elif bl>1 and ni in bst and(ni!=b[-1]or b[-1]==b[-2]):continue
-   if fs:
-    if tr:bd=min((d:=min(abs(ni%W-f%W),W-abs(ni%W-f%W))+min(abs(ni//W-f//W),H-abs(ni//W-f//W)))+(50 if fe.get(f,I)<d else 0)for f in fs)
-    else:bd=min((d:=abs(ni%W-f%W)+abs(ni//W-f//W))+(50 if fe.get(f,I)<d else 0)for f in fs)
-   else:bd=I
-   if el and bb[ni]:dz.append((bd,a,ni))
-   else:cd.append((bd,a,ni))
-  if not cd:
-   if dz:return max(dz,key=lambda z:min((abs(z[2]%W-e%W)+abs(z[2]//W-e//W)for e in ehs),default=9))[1]
-   return va[0]
-  cd.sort()
-  if not co:return min(cd,key=lambda x:(x[0],x[1]!=md))[1]
-  cp=min(2000,max(700,bl*2))
-  ok=None;uk=None;us=-1
-  for ct,a,ni in cd:
-   if time.perf_counter()-t0>TB:
-    if ok:return ok[1]
-    if uk:return uk[1]
-    return cd[0][1]
-   ea=ni in fs
-   nb=[ni]+(b if ea else b[:-1]);nl=len(nb)
-   b2=bytearray(bb)
-   for i in nb[1:]:b2[i]=1
-   if not ea:b2[nb[-1]]=0
-   b2[ni]=0
-   sp,se=_f(ni,b2,W,H,tr,cp,t0)
-   if co and sp<cp and sp<2*nl and not(sl and se[nb[-1]]):
-    if sp>us:us=sp;uk=(sp,a)
-    continue
-   eh=min((abs(ni%W-e%W)+abs(ni//W-e//W)for e in ehs),default=I)if el else I
-   k=(ct,-sp,-eh,a!=md)
-   if ok is None or k<ok[0]:ok=(k,a)
-  return ok[1]if ok else(uk[1]if uk else cd[0][1])
-def create_agent():return SnakeAgent()
+  q=P(p,s);m=D(q)
+  return AC[m]if m in q.validMoves else p['valid_actions'][0]
+def create_agent():return A()
+def D(p):
+ w=p.width;h=p.height;t=p.toroidal;mk=p.marks;q=p.queue;g=p.newMark();N=p.nb;F=set(p.foods)
+ b=p.myBody;hd=b[0];v=p.myScore;tl=b[-1];bs=p.newMark();ln=0;g0=1 if p.previousReward==15 else 0
+
+ def nx(c,k):
+  x=N[4*c+k];return x if x>=0 else hd
+ def ds(a,c):
+  i=abs(a%w-c%w);j=abs(a//w-c//w);return min(i,w-i)+min(j,h-j)if t else i+j
+
+ def ok(c,d,gr):
+  m=mk[c];return m!=g and(m<=bs or m>bs+ln or d>=ln+bs+1-m+gr)
+ def room(c,cap,sg,gr):
+  for i in range(ln):
+   if mk[b[i]]!=g:mk[b[i]]=bs+1+i
+  mk[hd]=g
+  if not ok(c,1,gr):return 0
+  mk[c]=sg;q[0]=c;n=1;k=0;d=1;e=1
+  while k<n:
+   if k==e:d+=1;e=n
+   a=q[k];k+=1
+   for m in range(4):
+    x=nx(a,m)
+    if mk[x]!=sg and ok(x,d+1,gr):
+     mk[x]=sg;q[n]=x;n+=1
+     if n>cap:return cap
+  return n
+
+ if v>98:
+  ln=len(b)
+  for i in range(ln):mk[b[i]]=bs+1+i;p.newMark()
+ if v>298:
+  for e in p.enemies:
+   for c in e.body:mk[c]=g
+   if not t:
+    for d in range(4):mk[nx(e.body[0],d)]=g
+ mk[hd]=g;tg=tl;bk=BIG
+ for i,f in enumerate(p.foods):
+  d=ds(hd,f);e=p.foodRivalDistance(i);k=d+(8+2*(d-e)if e<d else 0)+(2 if e==d else 0)
+  if k<bk:bk=k;tg=f
+ cap=len(b)+(40 if v>298 else 8);hu=p.turnsWithoutFood>800;sv=p.turnsWithoutFood>p.starvationTurns-150;md=p.myDirection
+ be=p.validMoves[0];K=None
+ for m in p.validMoves:
+  c=nx(hd,m);f=c in F;r=room(c,cap,p.newMark(),g0+(1 if f else 0))
+  a0=((1 if r>0 else 0)if sv else(1 if 2*r>=ln else 0))if hu else r
+  a=(a0,0 if hu or not f else 1,-ds(c,tg),0 if hu else-ds(c,tl),-(m!=md))
+  if K is None or a>K:K=a;be=m
+ return be
