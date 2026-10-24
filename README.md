@@ -8,7 +8,7 @@ game in two languages:
 
 | | Python arena | Kotlin arena |
 |---|---|---|
-| Entries | `tacticas/Provider-Model_Name.py` | `kotlin/tactics/Provider-Model_Name.kt` |
+| Entries | `tacticas/Lab-Model_Name.py` | `kotlin/tactics/Lab-Model_Name.kt` |
 | Rules | `tacticas/rules.txt` | `kotlin/tactics/rules_kotlin.txt` |
 | Runs on | a PC (`SNAKES.py`, pygame) | Android phones (IssaArcade, in the EmuGaMind app) and a PC (`kotlin/`) |
 | Snakes | up to 50 | up to 400 at once |
@@ -52,7 +52,7 @@ It writes `kotlin/telemetry_kotlin.json` (what the models read) and `kotlin/q_ta
 ### Enter your model
 1. Give your model the rules of the arena it plays in (and, if it can read files, this whole folder).
    The model writes the code itself, within 4 minutes per request and without test runs of its own.
-2. Save its answer as `tacticas/Provider-Model_Name.py` or `kotlin/tactics/Provider-Model_Name.kt`
+2. Save its answer as `tacticas/Lab-Model_Name.py` or `kotlin/tactics/Lab-Model_Name.kt`
    (letters, digits, `.`, `_`, `-`). Empty files with known model names may already be there: write into yours.
 3. Open a pull request that adds **only that file**. In the description say which model and which tool
    (web chat, IDE, CLI…) wrote it. A GitHub check repeats the audit, compiles Kotlin files and times them.

@@ -1,5 +1,5 @@
-MODEL_NAME="OpenAI-GPT-5.6_terra_high"
-# Port of kotlin/tactics/OpenAI-GPT-5.6_terra_high.kt (the model's own strategy), translated to Python by the arena admin.
+MODEL_NAME="Cognition-SWE-1.6_Slow"
+# Port of kotlin/tactics/Cognition-SWE-1.6_Slow.kt (the model's own strategy), translated to Python by the arena admin.
 import time
 DX=(0,0,-1,1);DY=(-1,1,0,0);AC=('UP','DOWN','LEFT','RIGHT');BIG=1<<62
 class E:
@@ -47,37 +47,54 @@ class A:
   return AC[m]if m in q.validMoves else p['valid_actions'][0]
 def create_agent():return A()
 def D(p):
- w=p.width;h=p.height;t=p.toroidal;mk=p.marks;q=p.queue;bm=p.newMark();N=p.nb;F=set(p.foods)
- b=p.myBody;hd=b[0];v=p.myScore;tl=b[-1]
+ w=p.width;h=p.height;t=p.toroidal;mk=p.marks;q=p.queue;g=p.newMark();N=p.nb;F=set(p.foods)
+ b=p.myBody;hd=b[0];v=p.myScore;tl=b[-1];bs=p.newMark();ln=0;g0=1 if p.previousReward==15 else 0
+
  def nx(c,k):
   x=N[4*c+k];return x if x>=0 else hd
  def ds(a,c):
   i=abs(a%w-c%w);j=abs(a//w-c//w);return min(i,w-i)+min(j,h-j)if t else i+j
- def room(c,cap,sm):
-  if mk[c]==bm:return 0
-  mk[c]=sm;q[0]=c;n=1;k=0
+
+ def ok(c,d,gr):
+  m=mk[c];return m!=g and(m<=bs or m>bs+ln or d>=ln+bs+1-m+gr)
+ def room(c,cap,sg,gr):
+  for i in range(ln):
+   if mk[b[i]]!=g:mk[b[i]]=bs+1+i
+  mk[hd]=g
+  if not ok(c,1,gr):return 0
+  mk[c]=sg;q[0]=c;n=1;k=0;d=1;e=1
   while k<n:
+   if k==e:d+=1;e=n
    a=q[k];k+=1
-   for d in range(4):
-    e=nx(a,d);m=mk[e]
-    if m!=sm and m!=bm:
-     mk[e]=sm;q[n]=e;n+=1
+   for m in range(4):
+    x=nx(a,m)
+    if mk[x]!=sg and ok(x,d+1,gr):
+     mk[x]=sg;q[n]=x;n+=1
      if n>cap:return cap
   return n
+
  if v>98:
-  for i in range(len(b)if p.previousReward==15 else len(b)-1):mk[b[i]]=bm
+  ln=len(b)
+  for i in range(ln):mk[b[i]]=bs+1+i;p.newMark()
  if v>298:
   for e in p.enemies:
-   for c in e.body:mk[c]=bm
+   for c in e.body:mk[c]=g
    if not t:
-    for d in range(4):mk[nx(e.body[0],d)]=bm
- mk[hd]=bm;tg=tl;bk=BIG
+    for d in range(4):mk[nx(e.body[0],d)]=g
+ mk[hd]=g;tg=tl;bk=BIG
  for i,f in enumerate(p.foods):
   d=ds(hd,f);e=p.foodRivalDistance(i);k=d+(8+2*(d-e)if e<d else 0)+(2 if e==d else 0)
   if k<bk:bk=k;tg=f
- cap=len(b)+(40 if v>298 else 8);hu=p.turnsWithoutFood>800;md=p.myDirection;be=p.validMoves[0];K=None
+ cap=len(b)+(40 if v>298 else 8);hu=p.turnsWithoutFood>700;sv=p.turnsWithoutFood>=1350;md=p.myDirection
+ be=p.validMoves[0];K=None;found=False
  for m in p.validMoves:
-  c=nx(hd,m);r=room(c,cap,p.newMark())
-  a=((1 if r>0 else 0)if hu else r,0 if hu else(1 if c in F else 0),-ds(c,tg),0 if hu else-ds(c,tl),-(m!=md))
+  if K is not None and p.nanosLeft()<=0:break
+  c=nx(hd,m);f=c in F;r=room(c,cap,p.newMark(),g0+(1 if f else 0))
+  if r>0:found=True
+  ms=1 if sv else len(b)//2
+  a=((1 if r>=ms else 0)if hu else r,0 if hu or not f else 1,-ds(c,tg),0 if hu else-ds(c,tl),-(m!=md))
   if K is None or a>K:K=a;be=m
+ if not found:
+  for m in p.validMoves:
+   if mk[nx(hd,m)]!=g:return m
  return be

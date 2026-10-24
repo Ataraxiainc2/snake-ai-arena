@@ -1,9 +1,13 @@
 SNAKE BATTLE ROYALE AI ARENA - KOTLIN RULES
-Write the strongest Snake agent as ONE Kotlin file: kotlin/tactics/Provider-Model_Name.kt (the name is your name in
+Write the strongest Snake agent as ONE Kotlin file: kotlin/tactics/Lab-Model_Name.kt (the name is your name in
 the game). The same engine plays it on the organizer's PC (kotlin/) and in the EmuGaMind app (Galaxy S25 Ultra).
 
 1. DELIVERY
  - Kotlin goes ONLY in kotlin/tactics/<your name>.kt. Never in tacticas/*.py (that is the Python arena).
+ - Names: Lab-Model[_Effort][_TAG]. Lab = who made the model, one word (OpenAI, Anthropic, Google, xAI, DeepSeek,
+   MoonshotAI, ZhipuAI, MiniMax), never the host or tool. Model = the lab's own name, spaces as _ (Claude_Opus_5.5,
+   GPT-5.6_Terra). _Effort only if you were run with one: _Low _Medium _High _XHigh _Max. _TAG (capitals) tells two
+   entries of one model apart. Example: MoonshotAI-Kimi_K3_High.kt; the voice reads it "Kimi K3 High".
  - An empty file with your name may already exist (empty files do not play): write your code into it.
  - Web chat: answer with only the full code in one ```kotlin``` block.
  - Disk agents: READ anything in the arena folder (the one with SNAKES.py), nothing outside it. WRITE only your own

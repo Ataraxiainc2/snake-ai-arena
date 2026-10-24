@@ -18,7 +18,7 @@ private const val USAGE = """Snake Battle Royale AI Arena - Kotlin engine (same 
                                 kotlin/telemetry_phone.json with adb (the phone connected by USB, debugging on);
                                 run and view do it by themselves at every save when a phone is connected
   reset-records                 every best score back to 0 (the ranking starts again); what the DQN learned is kept
-  sync                          create an empty kotlin/tactics/<Provider-Model_Name>.kt for every known model that has
+  sync                          create an empty kotlin/tactics/<Lab-Model_Name>.kt for every known model that has
                                 none (models.dev, as SNAKES.py does); existing files are never touched. run and view
                                 do it at start unless --no-sync
 """

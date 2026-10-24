@@ -247,7 +247,9 @@ class Brain(seed: Long, val hidden: Int = 64) {
             val records = LinkedHashMap(old?.records ?: emptyMap())
             for (s in snakes) {
                 if (s.kind == Kind.HUMAN) continue
-                records[s.name] = Record(s.epsilon, s.steps, maxOf(s.bestScore, records[s.name]?.best ?: 0))
+                // a renamed entry's record moves to its new name
+                val before = Names.before(s.name)?.let { records.remove(it) }?.best ?: 0
+                records[s.name] = Record(s.epsilon, s.steps, maxOf(s.bestScore, records[s.name]?.best ?: 0, before))
             }
             val tmp = File(file.path + ".tmp")
             DataOutputStream(tmp.outputStream().buffered()).use { o ->
@@ -312,7 +314,7 @@ class Brain(seed: Long, val hidden: Int = 64) {
             }
             for (s in snakes) {
                 if (s.kind == Kind.HUMAN) continue
-                val r = saved.records[s.name] ?: continue
+                val r = saved.records[s.name] ?: Names.before(s.name)?.let { saved.records[it] } ?: continue
                 if (s.kind == Kind.DQN && withNet) {
                     s.epsilon = r.epsilon
                     s.steps = r.steps

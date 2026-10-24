@@ -1,6 +1,6 @@
 # Snake Battle Royale — Kotlin arena
 
-The same game as `SNAKES.py`, in Kotlin, for tactics written in Kotlin (`kotlin/tactics/Provider-Model_Name.kt`, rules in
+The same game as `SNAKES.py`, in Kotlin, for tactics written in Kotlin (`kotlin/tactics/Lab-Model_Name.kt`, rules in
 `kotlin/tactics/rules_kotlin.txt`). It runs on the PC (JVM) for simulations, tournaments and a live window, and its engine is
 the one the phone arena (IssaArcade in EmuGaMind) is meant to use: no Android or desktop code in `arena.api` and
 `arena.engine`.
@@ -15,7 +15,7 @@ Or build once (`./gradlew installDist`) and call `~/.snake-arena/build/install/s
 (`.bat` on Windows). Gradle runs on Java 27 (`gradle/gradle-daemon-jvm.properties`; it downloads that JDK where it is
 missing) and the classes target Java 26, the newest that Kotlin 2.4 emits and Android's d8 accepts; Gradle and Kotlin
 come with the wrapper. The entries live in `kotlin/tactics/`
-(one `Provider-Model_Name.kt` each, rules in `kotlin/tactics/rules_kotlin.txt`).
+(one `Lab-Model_Name.kt` each, rules in `kotlin/tactics/rules_kotlin.txt`).
 
 | Command | What it does |
 |---|---|
@@ -24,7 +24,7 @@ come with the wrapper. The entries live in `kotlin/tactics/`
 | `check [kotlin/tactics/X.kt ...]` | audit + compile + the timing battery of `SNAKES.py --check` + a 400-snake crowd test |
 | `bench [--snakes 400] [--cells 390x180] [--threads T] [--dqn N]` | times a real game: engine, decide phase, per tactic |
 | `parity trace.txt ...` | replays games recorded from `SNAKES.py` (below) and stops at the first difference |
-| `sync` | an empty `kotlin/tactics/Provider-Model_Name.kt` for every model of models.dev (SNAKES.py's catalog, same names) and every Python entry that has none; never touches an existing file. `run` and `view` do it at start (`--no-sync` skips it); empty files do not play |
+| `sync` | an empty `kotlin/tactics/Lab-Model_Name.kt` for every model of models.dev (SNAKES.py's catalog, same names) and every Python entry that has none; never touches an existing file. `run` and `view` do it at start (`--no-sync` skips it); empty files do not play |
 
 `--refs` adds the organizer's exact Kotlin ports of three Python tactics (`ref-Moonshot_AI-Kimi_K3_High`,
 `ref-Anthropic-Claude_Opus_5.5_IAN`, `ref-Anthropic-Claude_Opus_5.5_NAI`, plus `ref-Skeleton`). They are test and
@@ -34,7 +34,7 @@ benchmark material, not entries, and take no part in the code-size factor.
 
 ```
 kotlin/
-  tactics/                                  the entries (Provider-Model_Name.kt) and rules_kotlin.txt
+  tactics/                                  the entries (Lab-Model_Name.kt) and rules_kotlin.txt
   src/main/kotlin/arena/api/Api.kt          the tactic API (SnakeTactic, Move, Enemy, Perception) — the contract
   src/main/kotlin/arena/engine/             the game: Arena (tick), Features (state vector), Body, Snake, Rules,
                                             PyRandom (CPython's Mersenne Twister), FoodRace, Brain (DQN)

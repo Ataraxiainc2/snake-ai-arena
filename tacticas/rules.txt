@@ -1,6 +1,9 @@
 SNAKE BATTLE ROYALE AI ARENA - RULES
-Deliver the strongest Snake agent as ONE self-contained .py file: tacticas/Provider-Model_Name.py.
+Deliver the strongest Snake agent as ONE self-contained .py file: tacticas/Lab-Model_Name.py.
 The file name is your name in the game and on the leaderboard.
+Names: Lab-Model[_Effort][_TAG]. Lab = who made the model, one word (OpenAI, Anthropic, Google, xAI, DeepSeek,
+MoonshotAI, ZhipuAI, MiniMax), never the host or tool. Model = the lab's own name, spaces as _ (Claude_Opus_5.5).
+_Effort only if you were run with one: _Low _Medium _High _XHigh _Max. _TAG (capitals) tells two entries apart.
 
 1. DELIVERY
  - Web chat: answer with only the full code in one ```python``` block.

@@ -1,5 +1,5 @@
-MODEL_NAME="TRAE_Seed_2.1_Turbo"
-# Port of kotlin/tactics/TRAE_Seed_2.1_Turbo.kt (the model's own strategy), translated to Python by the arena admin.
+MODEL_NAME="OpenAI-GPT-5.6_Terra_High"
+# Port of kotlin/tactics/OpenAI-GPT-5.6_Terra_High.kt (the model's own strategy), translated to Python by the arena admin.
 import time
 DX=(0,0,-1,1);DY=(-1,1,0,0);AC=('UP','DOWN','LEFT','RIGHT');BIG=1<<62
 class E:
@@ -47,36 +47,37 @@ class A:
   return AC[m]if m in q.validMoves else p['valid_actions'][0]
 def create_agent():return A()
 def D(p):
- w=p.width;h=p.height;t=p.toroidal;mk=p.marks;g=p.newMark();N=p.nb;B=p.bodies;F=set(p.foods)
- b=p.myBody;hd=b[0];tl=b[-1];v=p.myScore;sl=v>98 or p.selfCollisionWarning;el=v>298 or p.enemyCollision
+ w=p.width;h=p.height;t=p.toroidal;mk=p.marks;q=p.queue;bm=p.newMark();N=p.nb;F=set(p.foods)
+ b=p.myBody;hd=b[0];v=p.myScore;tl=b[-1]
  def nx(c,k):
   x=N[4*c+k];return x if x>=0 else hd
  def ds(a,c):
   i=abs(a%w-c%w);j=abs(a//w-c//w);return min(i,w-i)+min(j,h-j)if t else i+j
- def rm(st,e,cp):
-  if st==tl and e or mk[st]==g or el and B.get(st,0)>0:return 0
-  mv=p.newMark();mk[st]=mv;q=p.queue;q[0]=st;n=1;i=0
-  while i<n:
-   c=q[i];i+=1
-   for k in range(4):
-    x=nx(c,k)
-    if mk[x]!=mv and not(x==tl and e)and mk[x]!=g and not(el and B.get(x,0)>0):
-     mk[x]=mv;q[n]=x;n+=1
-     if n>cp:return cp
+ def room(c,cap,sm):
+  if mk[c]==bm:return 0
+  mk[c]=sm;q[0]=c;n=1;k=0
+  while k<n:
+   a=q[k];k+=1
+   for d in range(4):
+    e=nx(a,d);m=mk[e]
+    if m!=sm and m!=bm:
+     mk[e]=sm;q[n]=e;n+=1
+     if n>cap:return cap
   return n
- if sl:
-  for i in range(len(b)if p.previousReward==15 else len(b)-1):mk[b[i]]=g
- mk[hd]=g
- if el:
+ if v>98:
+  for i in range(len(b)if p.previousReward==15 else len(b)-1):mk[b[i]]=bm
+ if v>298:
   for e in p.enemies:
-   for k in range(4):mk[nx(e.body[0],k)]=g
- tg=tl;bk=BIG
+   for c in e.body:mk[c]=bm
+   if not t:
+    for d in range(4):mk[nx(e.body[0],d)]=bm
+ mk[hd]=bm;tg=tl;bk=BIG
  for i,f in enumerate(p.foods):
-  d=ds(hd,f);r=p.foodRivalDistance(i);k=d+800000 if el and r<8 else d+8+2*(d-r)if r<d else d
+  d=ds(hd,f);e=p.foodRivalDistance(i);k=d+(8+2*(d-e)if e<d else 0)+(2 if e==d else 0)
   if k<bk:bk=k;tg=f
- Y=min(len(b)+8+(40 if el else 0),3000);hu=p.turnsWithoutFood>800;md=p.myDirection;be=p.validMoves[0];K=None
+ cap=len(b)+(40 if v>298 else 8);hu=p.turnsWithoutFood>800;md=p.myDirection;be=p.validMoves[0];K=None
  for m in p.validMoves:
-  c=nx(hd,m);ef=c in F;r=rm(c,ef,Y)
-  a=((1 if r>0 else 0)if hu else r,0 if hu else(1 if ef else 0),-ds(c,tg),0 if hu else-ds(c,tl),-(m!=md))
+  c=nx(hd,m);r=room(c,cap,p.newMark())
+  a=((1 if r>0 else 0)if hu else r,0 if hu else(1 if c in F else 0),-ds(c,tg),0 if hu else-ds(c,tl),-(m!=md))
   if K is None or a>K:K=a;be=m
  return be

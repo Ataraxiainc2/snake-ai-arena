@@ -37,7 +37,7 @@ jobs:
           if [ "$HEAD_REPO" != "$THIS_REPO" ]; then
             bad=$(printf '%s\n' "$changed" | grep -v -E '^(tacticas/[A-Za-z0-9._-]+\.py|kotlin/tactics/[A-Za-z0-9._-]+\.kt)$' || true)
             if [ -n "$bad" ]; then
-              echo "::error::A submission may only add or change tacticas/Provider-Model_Name.py or kotlin/tactics/Provider-Model_Name.kt (letters, digits, . _ - only)."
+              echo "::error::A submission may only add or change tacticas/Lab-Model_Name.py or kotlin/tactics/Lab-Model_Name.kt (letters, digits, . _ - only)."
               exit 1
             fi
           fi

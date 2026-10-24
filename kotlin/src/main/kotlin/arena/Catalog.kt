@@ -12,7 +12,7 @@ import java.time.Duration
 /**
  * SNAKES.py's sync_model_catalog_files for the Kotlin arena: every text model of https://models.dev/api.json (same
  * filters and file names as SNAKES.py), plus the name of every non-empty Python tactic in tacticas/, gets an empty
- * kotlin/tactics/Provider-Model_Name.kt ready to be filled. Existing files are never touched: each one is created only
+ * kotlin/tactics/Lab-Model_Name.kt ready to be filled. Existing files are never touched: each one is created only
  * if it does not exist (an atomic create, so a file a model is writing at that moment is safe). Empty files do not play.
  */
 object Catalog {
@@ -49,6 +49,21 @@ object Catalog {
     private fun clean(text: String): String =
         text.trim().replace(Regex("[^A-Za-z0-9._-]+"), "_").replace(Regex("_+"), "_").trim('_')
 
+    /** SNAKES.py _lab_brand: the lab in one word ("Moonshot AI" -> MoonshotAI, "StepFun (China)" -> StepFun). */
+    private fun brand(id: String, name: String): String =
+        BRANDS[id] ?: name.replace(Regex("\\(.*?\\)"), "").replace(Regex("[^A-Za-z0-9]"), "").ifEmpty { clean(id) }
+
+    private val BRANDS = mapOf("liquid" to "LiquidAI")
+
+    /** SNAKES.py MODEL_MAKERS: model families and the lab that makes them; the first match wins. */
+    private val MAKERS = listOf(
+        "nemotron" to "Nvidia", "claude" to "Anthropic", "kimi" to "MoonshotAI", "\\bgpt|^o\\d" to "OpenAI",
+        "gemini|gemma" to "Google", "qwen|qwq|qvq" to "Alibaba", "deepseek" to "DeepSeek", "\\bglm" to "ZhipuAI",
+        "grok" to "xAI", "mistral|mixtral|codestral|devstral|magistral|ministral|pixtral|voxtral" to "Mistral",
+        "^(meta[ _-]?)?llama" to "Meta", "minimax" to "MiniMax", "mimo" to "Xiaomi", "\\bstep[ _-]?\\d" to "StepFun",
+        "\\bseed" to "ByteDance", "\\bphi[ _-]?\\d" to "Microsoft", "\\bsolar" to "Upstage",
+    ).map { (rx, lab) -> Regex(rx, RegexOption.IGNORE_CASE) to lab }
+
     private fun fromModelsDev(): Set<String> {
         val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build()
         val req = HttpRequest.newBuilder(URI(URL)).timeout(Duration.ofSeconds(30)).header("User-Agent", "Mozilla/5.0").build()
@@ -66,7 +81,7 @@ object Catalog {
         val out = HashSet<String>()
         for ((pid, pdata) in root) {
             if (pdata !is Map<*, *> || (reach[pid] ?: 0) == 0) continue
-            val provider = clean(pdata["name"] as? String ?: pid)
+            val provider = brand(pid, pdata["name"] as? String ?: pid)
             for ((mid, m) in models(pdata)) {
                 if (m !is Map<*, *>) continue
                 val name = m["name"] as? String ?: ""
@@ -76,7 +91,9 @@ object Catalog {
                 val cid = m["canonical_model_id"] as? String ?: ""
                 if (cid.isNotEmpty() && !cid.startsWith("$pid/")) continue
                 val model = clean(name.ifEmpty { mid })
-                if (provider.isNotEmpty() && model.isNotEmpty()) out.add("$provider-$model")
+                // a lab that also serves other labs' models (Nvidia's Kimi): the file is named after the maker
+                val lab = MAKERS.firstOrNull { it.first.containsMatchIn(name.ifEmpty { mid }) }?.second ?: provider
+                if (provider.isNotEmpty() && model.isNotEmpty()) out.add("$lab-$model")
             }
         }
         return out

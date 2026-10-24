@@ -1,5 +1,5 @@
-MODEL_NAME="Github_Copilot_mai-code-1.1-flash"
-# Port of kotlin/tactics/Github_Copilot_mai-code-1.1-flash.kt (the model's own strategy), translated to Python by the arena admin.
+MODEL_NAME="Microsoft-MAI-Code-1.1-Flash"
+# Port of kotlin/tactics/Microsoft-MAI-Code-1.1-Flash.kt (the model's own strategy), translated to Python by the arena admin.
 import time
 DX=(0,0,-1,1);DY=(-1,1,0,0);AC=('UP','DOWN','LEFT','RIGHT');BIG=1<<62
 class E:

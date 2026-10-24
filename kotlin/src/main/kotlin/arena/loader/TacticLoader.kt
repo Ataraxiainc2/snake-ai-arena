@@ -11,7 +11,7 @@ import java.net.URLClassLoader
 import java.security.MessageDigest
 
 /**
- * Loads tacticas/<Provider-Model_Name>.kt as SNAKES.py loads .py files: empty files are skipped, the rest is audited
+ * Loads tacticas/<Lab-Model_Name>.kt as SNAKES.py loads .py files: empty files are skipped, the rest is audited
  * (Audit.source), compiled with the Kotlin compiler inside this program into its own package
  * (arena.tactics.<id>, with `import arena.api.*`), audited again on the bytecode (Audit.bytecode) and loaded through
  * its own class loader. Compiled classes are cached by content under the build folder, so a restart with unchanged

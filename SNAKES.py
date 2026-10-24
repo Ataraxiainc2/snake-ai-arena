@@ -3,7 +3,7 @@ SNAKES.py — Snake Battle Royale AI Arena & Reinforcement Learning Lab
 =====================================================================
 Single-file unified engine containing:
   - Section 1: Configuration, Constants, Hyperparameters & Trilingual Localization (EN_US, ES_LA, PT_BR)
-  - Section 2: Automated AI Model Catalog Synchronizer (`tacticas/Provider-Model_Name.py`)
+  - Section 2: Automated AI Model Catalog Synchronizer (`tacticas/Lab-Model_Name.py`)
   - Section 3: Anti-Cheat AST Sandbox & External LLM Tactic Loader
   - Section 4: Hybrid Deep Reinforcement Learning (Double DQN + Target Net + Shared Replay Buffer)
   - Section 5: Game Entities, 16-D State Vector & Progressive Rules (100 / 200 / 300 pts)
@@ -88,7 +88,7 @@ def check_tactics(paths):
     def check(path):
         rel = os.path.relpath(os.path.abspath(path), root).replace(os.sep, "/")
         if not (rel.startswith("tacticas/") and rel.endswith(".py") and rel.count("/") == 1):
-            return False, f"{rel}: entries must be a single tacticas/<Provider-Model_Name>.py file"
+            return False, f"{rel}: entries must be a single tacticas/<Lab-Model_Name>.py file"
         src = open(path, encoding="utf-8").read()
         if not src.strip():
             return False, f"{rel}: empty file"
@@ -234,7 +234,7 @@ HOLD_LOCATE_SEC = 2      # the human's snake marked when a pause ends
 # forever cannot freeze the game (an episode only ends when every snake has died once).
 STARVATION_TURNS = 1500  # 100 s at 15 FPS; normal play eats every ~50 turns
 # Tactic files the organizer has suspended for now (kept on disk untouched, simply not loaded).
-SUSPENDED_TACTICS = set()  # e.g. {"Provider-Model.py"}; Kimi K3 was reinstated after fixing its stall
+SUSPENDED_TACTICS = set()  # e.g. {"Lab-Model.py"}; Kimi K3 was reinstated after fixing its stall
 HUMAN_NAME = "Human (You)"  # distinct from every built-in DQN philosopher name
 
 
@@ -404,7 +404,7 @@ def cycle_language():
 
 
 # ==============================================================================
-# SECTION 2: AUTOMATED AI MODEL CATALOG SYNCHRONIZER (tacticas/Provider-Model.py)
+# SECTION 2: AUTOMATED AI MODEL CATALOG SYNCHRONIZER (tacticas/Lab-Model.py)
 # ==============================================================================
 EXCLUDED_MODEL_REGEX = re.compile(
     r"embed|whisper|tts|audio|speech|moderation|rerank|image|dall-?e|imagen|veo|sora|"
@@ -419,11 +419,42 @@ def _clean_filename_token(text):
     return re.sub(r"_+", "_", cleaned).strip("_")
 
 
+# Names v2 (2026-10-24): Lab-Model[_Effort][_TAG], the lab in one word (see tacticas/rules.txt). Kotlin: arena/Catalog.kt.
+LAB_BRANDS = {"liquid": "LiquidAI"}
+# Model families and the lab that makes them, for a lab that also serves other labs' models; the first match wins.
+MODEL_MAKERS = [(re.compile(rx, re.IGNORECASE), lab) for rx, lab in (
+    ("nemotron", "Nvidia"), ("claude", "Anthropic"), ("kimi", "MoonshotAI"), (r"\bgpt|^o\d", "OpenAI"),
+    ("gemini|gemma", "Google"), ("qwen|qwq|qvq", "Alibaba"), ("deepseek", "DeepSeek"), (r"\bglm", "ZhipuAI"),
+    ("grok", "xAI"), ("mistral|mixtral|codestral|devstral|magistral|ministral|pixtral|voxtral", "Mistral"),
+    (r"^(meta[ _-]?)?llama", "Meta"), ("minimax", "MiniMax"), ("mimo", "Xiaomi"), (r"\bstep[ _-]?\d", "StepFun"),
+    (r"\bseed", "ByteDance"), (r"\bphi[ _-]?\d", "Microsoft"), (r"\bsolar", "Upstage"))]
+# Old name -> v2 name of the entries that had played before the rename: q_tables.pkl records follow them
+# (the Kotlin engine's arena/engine/Names.kt holds the same list).
+RENAMED_TACTICS = {
+    "Cursor_Grok_4.6_Medium": "xAI-Grok_4.6_Medium",
+    "Devin_SWE-1.6_Slow": "Cognition-SWE-1.6_Slow",
+    "Github_Copilot_mai-code-1.1-flash": "Microsoft-MAI-Code-1.1-Flash",
+    "KIRO_UNKNOWN": "Unknown-Kiro",
+    "TRAE_Seed_2.1_Turbo": "ByteDance-Seed_2.1_Turbo",
+    "OpenAI-GPT-5.6_terra_high": "OpenAI-GPT-5.6_Terra_High",
+    "Moonshot_AI-Kimi_K2.8 Preview": "MoonshotAI-Kimi_K2.8_Preview",
+    "Moonshot_AI-Kimi_K3_High": "MoonshotAI-Kimi_K3_High",
+}
+NAME_BEFORE = {new: old for old, new in RENAMED_TACTICS.items()}
+
+
+def _lab_brand(provider_id, name):
+    """The lab in one word: "Moonshot AI" -> MoonshotAI, "StepFun (China)" -> StepFun."""
+    if provider_id in LAB_BRANDS:
+        return LAB_BRANDS[provider_id]
+    return re.sub(r"[^A-Za-z0-9]", "", re.sub(r"\(.*?\)", "", str(name))) or _clean_filename_token(provider_id)
+
+
 def sync_model_catalog_files(folder=TACTICS_FOLDER):
     """
     Fetches the up-to-date catalog of AI providers and text models from https://models.dev/api.json
     (with an optional offline fallback file named by $SNAKES_PRICES_JSON) and ensures that every model has a
-    `Provider-Model_Name.py` file in `tacticas/`.
+    `Lab-Model_Name.py` file in `tacticas/`.
     - Newly discovered models are created as empty 0-byte `.py` files ready to be filled.
     - Existing `.py` files (whether empty or already implemented) are NEVER overwritten.
     """
@@ -452,7 +483,7 @@ def sync_model_catalog_files(folder=TACTICS_FOLDER):
         for provider_id, pdata in root.items():
             if not isinstance(pdata, dict) or reach.get(provider_id, 0) == 0:
                 continue
-            provider_label = _clean_filename_token(pdata.get("name") or provider_id)
+            provider_label = _lab_brand(provider_id, pdata.get("name") or provider_id)
             for model_id, mdata in (pdata.get("models") or {}).items():
                 if not isinstance(mdata, dict):
                     continue
@@ -465,8 +496,10 @@ def sync_model_catalog_files(folder=TACTICS_FOLDER):
                 if cid and not cid.startswith(provider_id + "/"):
                     continue
                 model_label = _clean_filename_token(mdata.get("name") or model_id)
+                # a lab that also serves other labs' models (Nvidia's Kimi): the file is named after the maker
+                lab = next((b for rx, b in MODEL_MAKERS if rx.search(mdata.get("name") or model_id)), provider_label)
                 if provider_label and model_label:
-                    discovered_filenames.add(f"{provider_label}-{model_label}.py")
+                    discovered_filenames.add(f"{lab}-{model_label}.py")
     except Exception as e:
         logging.debug(f"Live models.dev sync skipped ({e}), checking local fallback.")
 
@@ -1826,8 +1859,9 @@ class Game:
             snakes_data = data.get("snakes", {})
             loaded_count = 0
             for s in self.snakes:
-                if not s.es_usuario and s.nombre in snakes_data:
-                    sd = snakes_data[s.nombre]
+                # a renamed entry finds the record saved under its old name
+                sd = None if s.es_usuario else snakes_data.get(s.nombre) or snakes_data.get(NAME_BEFORE.get(s.nombre))
+                if sd:
                     s.epsilon = sd.get("epsilon", DEFAULT_EPSILON_START)
                     s.gamma = sd.get("gamma", DEFAULT_GAMMA)
                     s.imitation_rate = sd.get("imitation_rate", DEFAULT_IMITATION_RATE)
@@ -2774,12 +2808,12 @@ OFFICIAL BLIND TOURNAMENT PROMPT FOR RIVAL LLMs (COPY & PASTE TO ANY AI MODEL)
 ================================================================================
 You are competing in the blind scientific tournament "Snake Battle Royale AI Arena".
 You must deliver a SINGLE Python file corresponding to your exact provider and model
-name inside `{TACTICS_FOLDER}/` (for example: `Provider-Model_Name.py`).
+name inside `{TACTICS_FOLDER}/` (for example: `Lab-Model_Name.py`).
 
 GAME RULES & ANTI-CHEAT SANDBOX SPECIFICATION:
 1. Required Interface:
    Your file must define:
-   - `MODEL_NAME = "Provider-Model_Name"`
+   - `MODEL_NAME = "Lab-Model_Name"`
    - A function `create_agent()` returning an object with method `decide_action(self, perception) -> str`
      (or a top-level function `decide_action(perception) -> str`), returning one of:
      `'UP'`, `'DOWN'`, `'LEFT'`, `'RIGHT'`.

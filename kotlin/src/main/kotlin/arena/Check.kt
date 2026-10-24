@@ -22,7 +22,7 @@ object Check {
         for (f in files) {
             val rel = f.path.replace('\\', '/')
             if (!f.name.endsWith(".kt") || f.absoluteFile.parentFile?.name != "tactics" || f.absoluteFile.parentFile?.parentFile?.name != "kotlin") {
-                println("FAIL $rel: entries must be a single kotlin/tactics/<Provider-Model_Name>.kt file"); ok = false; continue
+                println("FAIL $rel: entries must be a single kotlin/tactics/<Lab-Model_Name>.kt file"); ok = false; continue
             }
             val r = TacticLoader(f.parentFile, cache).load(f)
             val e = r.entry
