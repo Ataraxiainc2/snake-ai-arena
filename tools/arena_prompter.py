@@ -1584,6 +1584,11 @@ def r_send(req):
     out["seconds"] = round(time.time() - t0, 1)
     out["keyFrom"] = where
     out["host"] = prov["host"]
+    if out.get("status") in (404, 410):
+        alts = same_model_elsewhere(prov, model)
+        out["hint"] = (f"{prov['host']} lista este modelo pero no lo ofrece a tu cuenta (sin acceso, fuera del plan "
+                       "gratis o retirado). " + ("Mismo modelo en otros hosts: " + "; ".join(alts) + "."
+                                                 if alts else "No lo encontré en otros hosts del catálogo."))
     if out.get("status") in (401, 403):
         out["hint"] = (f"{prov['host']} rechazó la clave ({where}): tiene que ser una clave vigente de {prov['name']}, "
                        "el host que sirve el modelo." + (" Para volver a la de D:\\SC\\AK\\A, deja el campo de clave "
@@ -1593,6 +1598,24 @@ def r_send(req):
         out["checks"] = check_code(out["code"])
         out["chars"] = len(out["code"])
     return out
+
+
+def same_model_elsewhere(prov, model, limit=6):
+    """Other hosts that list the same model (same id without lab, ':free' or quantization): those with a key first."""
+    want = same_model_keys("", model)[1]
+    keys = load_keys()
+    found = []
+    for p in CATALOG.providers.values():
+        if p["id"] == prov["id"]:
+            continue
+        for m in p["models"].values():
+            if same_model_keys("", m["id"])[1] == want:
+                has = bool(key_label(p, keys) and keys.get(key_label(p, keys))) or bool(SESSION_KEYS.get(p["id"]))
+                found.append((not has, m.get("lab") != p["id"], not m.get("free"), p["name"],
+                              f"{p['name']} ({m['id']}{', gratis' if m.get('free') else ''}"
+                              f"{', con tu clave' if has else ', sin clave'})"))
+                break
+    return [f[4] for f in sorted(found)[:limit]]
 
 
 def r_check(req):
