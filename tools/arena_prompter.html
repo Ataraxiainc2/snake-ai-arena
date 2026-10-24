@@ -94,7 +94,6 @@ a{color:var(--accent)}
     </div>
     <div class="small muted" style="margin:10px 0 4px">Modelos <span id="modelCount"></span></div>
     <div class="list" id="modelList" style="height:420px"></div>
-    <div class="hint">Fuentes: models.dev (como EmuGaMind), /models público de cada proveedor, llmtr (gratis y hasta cuándo) y OpenRouter (:free, fecha de retiro).</div>
   </div>
 </section>
 <section>
@@ -116,7 +115,6 @@ a{color:var(--accent)}
         <span class="muted small">Etiqueta (opcional):</span>
         <input type="text" id="tag" placeholder="IAN" size="8" maxlength="12">
       </div>
-      <div class="hint">El esfuerzo elegido se envía al modelo y entra en el nombre (_High…). La etiqueta distingue dos entradas del mismo modelo.</div>
       <div id="names" style="margin-top:8px"></div>
       <div class="row" style="margin-top:8px">
         <span class="muted small">Archivo:</span>
@@ -133,7 +131,7 @@ a{color:var(--accent)}
     <div class="row" style="margin-bottom:8px">
       <label class="chk"><input type="checkbox" id="pOwn" checked> su código actual</label>
       <span class="muted small">rivales:</span>
-      <select id="pTop"><option>0</option><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select>
+      <select id="pTop"><option>0</option><option selected>1</option><option>2</option><option>3</option></select>
       <button id="regen">Regenerar prompt</button>
       <span class="grow"></span>
       <button id="copyPrompt">Copiar prompt</button>
@@ -149,7 +147,7 @@ a{color:var(--accent)}
       <label class="chk" id="trustWrap" hidden><input type="checkbox" id="trust"> confío en <span id="trustHost" class="mono"></span></label>
       <span id="sending" class="muted small"></span>
     </div>
-    <div class="hint">Nada se envía hasta que pulses Enviar. La clave va solo al host del proveedor elegido; la página nunca la recibe.</div>
+    <div class="hint">Nada se envía hasta pulsar Enviar; la clave solo va al host del proveedor.</div>
   </div>
 
   <div class="card" id="respCard" hidden>
@@ -222,8 +220,7 @@ async function loadCatalog(refresh){
     S.cat = await api("/api/catalog",{refresh:!!refresh});
     const st=S.cat.status||{};const n=S.cat.providers.reduce((a,p)=>a+p.models.length,0);
     const free=S.cat.providers.reduce((a,p)=>a+p.models.filter(m=>freeState(m)?.cls==="free").length,0);
-    const src=Object.entries(st.sources||{}).map(([k,v])=>`${k}: ${v}`).join(" · ");
-    $("status").innerHTML=`<b>${S.cat.providers.length}</b> proveedores · <b>${n}</b> modelos · <b>${free}</b> gratis · ${esc(st.built||"")} <span class="faint">— ${esc(src)}</span>`;
+    $("status").innerHTML=`<b>${S.cat.providers.length}</b> proveedores · <b>${n}</b> modelos · <b>${free}</b> gratis · ${esc(st.built||"")}`;
     const last=store.get("sel",null);
     renderProviders();
     if(last){const p=S.cat.providers.find(p=>p.id===last.p);if(p){selectProvider(p,true);const m=p.models.find(m=>m.id===last.m);if(m)selectModel(p,m)}}
@@ -405,7 +402,7 @@ function notes(checks,chars,finish){
   const out=[];
   if(finish==="length"||finish==="max_tokens") out.push(`<div class="notes warn">La respuesta se cortó por longitud: puede estar incompleta.</div>`);
   out.push(checks&&checks.length?`<div class="notes bad">Revisar: ${checks.map(esc).join(" · ")}</div>`:
-    `<div class="notes ok">Código Kotlin encontrado (${chars} caracteres): class Tactic y decide() presentes, sin infracciones visibles. Compílalo con la arena antes de jugar.</div>`);
+    `<div class="notes ok">Código Kotlin listo (${chars} caracteres). La arena lo compila y revisa antes de jugarlo.</div>`);
   $("respNotes").innerHTML=out.join("");
 }
 function showTab(t){$("code").hidden=t!=="code";$("full").hidden=t!=="full";$("tCode").classList.toggle("on",t==="code");$("tFull").classList.toggle("on",t==="full")}

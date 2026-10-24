@@ -707,10 +707,49 @@ def tactic_code(name, lang="kotlin"):
         return ""
 
 
-def build_prompt(name, top_n=3, include_own=True, lang="kotlin"):
+# The rules file is written for every reader (disk agents, IDEs, pull requests). A chat model reads none of that: it
+# gets only the sections that shape its code, and from the per-entry recommendations only its own line.
+CHAT_SECTIONS = re.compile(r"INTERFACE|API|LIMITS|PHYSICS|PERCEPTION|LESSONS|RESEARCH")
+SECTION = re.compile(r"^(\d+[a-z]?)\.\s+([A-Z][A-Z ]+)")
+
+
+def chat_rules(lang, name):
+    """The rules a chat model needs, from the same rules file the arena uses (one source, never two copies)."""
+    f = LANGS[lang]["rules"]
+    if not f.exists():
+        return f"({LANGS[lang]['rules_label']} not found)"
+    sections, cur = [], None
+    for line in f.read_text(encoding="utf-8").splitlines():
+        m = SECTION.match(line)
+        if m:
+            cur = [m.group(2).strip(), [line]]
+            sections.append(cur)
+        elif cur:
+            cur[1].append(line)
+    out = []
+    for title, lines in sections:
+        if title.startswith("RECOMMENDATIONS"):
+            bullets, b = [], None
+            for ln in lines[1:]:
+                if ln.startswith(" - "):
+                    b = [ln]
+                    bullets.append(b)
+                elif b is not None and ln.startswith("   "):
+                    b.append(ln)
+            mine = [b for b in bullets if re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", "".join(b))]
+            mine = mine or [b for b in bullets if b[0].startswith(" - New entries")]
+            if mine:
+                out.append("RECOMMENDATION FOR YOU (from the telemetry)")
+                out += [ln for b in mine for ln in b]
+        elif CHAT_SECTIONS.search(title):
+            out += [ln for ln in lines if ln.strip()]
+    return "\n".join(out)
+
+
+def build_prompt(name, top_n=1, include_own=True, lang="kotlin"):
     L = LANGS[lang]
     t = standings(lang)
-    rules = L["rules"].read_text(encoding="utf-8").strip() if L["rules"].exists() else f"({L['rules_label']} not found)"
+    rules = chat_rules(lang, name)
     rows = [r for r in (t or {}).get("ranking", []) if len(r) >= 7 and r[6] == "llm"]
     llm = (t or {}).get("llm", {})
     total = len(rows)
@@ -719,9 +758,8 @@ def build_prompt(name, top_n=3, include_own=True, lang="kotlin"):
         return f"rank {r[0]} of {total}, rank score {r[2]}, best {r[3]}, {r[4]} chars"
 
     ext, fence = L["ext"], L["fence"]
-    parts = [f"{L['arena']}. You compete as: {name}",
-             "You cannot read files or run anything; everything you need is below.", "",
-             f"=== RULES ({L['rules_label']}) ===", rules, ""]
+    parts = [f"{L['arena']}. You compete as: {name}. Everything you need is below.", "",
+             "=== RULES ===", rules, ""]
     own = tactic_code(name, lang) if include_own else ""
     mine = next((r for r in rows if r[1] == name), None)
     if own:
@@ -1448,7 +1486,7 @@ def r_prompt(req):
     name = req.get("name") or ""
     if not NAME_OK.match(name):
         raise KeyError("nombre de archivo inválido")
-    text, info = build_prompt(name, int(req.get("top", 3)), bool(req.get("own", True)))
+    text, info = build_prompt(name, int(req.get("top", 1)), bool(req.get("own", True)))
     info["file"] = file_state(name)
     return {"prompt": text, "info": info}
 
