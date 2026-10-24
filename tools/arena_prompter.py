@@ -4,11 +4,15 @@
     python tools/arena_prompter.py --port 9000 --no-browser
     python tools/arena_prompter.py auto --dry-run   # what every free model would write (sends nothing)
     python tools/arena_prompter.py auto             # every free model with a key writes its .kt and .py
+    python tools/arena_prompter.py auto --host llmtr --skip-existing   # only llmtr's free models, only its key
 
 Automatic mode: one offer per tactic name among the free models (a key for its host first, then the lab's own host,
 a host EmuGaMind reviewed, no daily quota); files with code are asked about before anything is sent; each answer
 gets 4 minutes (the arena's rule), the arena's own check on a staged copy (Kotlin: `check`; Python:
 `SNAKES.py --check`) and is written only if it passes. Answers and results go to the cache folder, never the arena.
+No cost: a real run downloads the catalogs again and only uses models whose input and output price is exactly 0 now
+and whose free period (if any) lasts at least another hour; chat models only (no image, voice, translation, safety
+or embedding models, no routers). A host that asks for consent (HTTP 403) is skipped for that model.
 
 What it does:
  - Model catalog, as EmuGaMind builds it (models.dev: providers whose API the app can speak, majors pinned to their
@@ -632,6 +636,7 @@ def tokens(text):
 # Keys (never printed, never sent to the page)
 # ---------------------------------------------------------------------------------------------------------------
 SESSION_KEYS = {}  # provider id -> key pasted in the page for this run only
+ONLY_KEY_LABELS = None  # auto --host: only these labels are kept from the keys file
 
 
 def load_keys():
@@ -645,6 +650,8 @@ def load_keys():
         if not line or line.startswith("#") or ":" not in line:
             continue
         label, values = line.split(":", 1)
+        if ONLY_KEY_LABELS is not None and label.strip().lower() not in ONLY_KEY_LABELS:
+            continue
         found = out.setdefault(label.strip().lower(), [])
         found += [v.strip() for v in values.split(";") if v.strip() and v.strip() not in found]
     return out
@@ -744,8 +751,9 @@ def build_prompt(name, top_n=3, include_own=True, lang="kotlin"):
                               "updated": (t or {}).get("updated")}
 
 
-CODE_BLOCK = {"kotlin": re.compile(r"```[ \t]*(kotlin|kt)?[^\n]*\n(.*?)```", re.S | re.I),
-              "python": re.compile(r"```[ \t]*(python|py)?[^\n]*\n(.*?)```", re.S | re.I)}
+# A block ends at its closing fence, or at the end of the answer when the model never closed it.
+CODE_BLOCK = {"kotlin": re.compile(r"```[ \t]*(kotlin|kt)?[^\n]*\n(.*?)(?:```|\Z)", re.S | re.I),
+              "python": re.compile(r"```[ \t]*(python|py)?[^\n]*\n(.*?)(?:```|\Z)", re.S | re.I)}
 CODE_MARK = {"kotlin": "class Tactic", "python": "def create_agent"}
 
 
@@ -827,8 +835,10 @@ def send_chat(prov, model, prompt, effort, key, timeout=900):
     content = msg.get("content")
     if isinstance(content, list):
         content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
+    thought = msg.get("reasoning_content") or msg.get("reasoning") or ""
     u = js.get("usage") or {}
     return {"ok": True, "text": content or "", "model": js.get("model"), "finish": ch.get("finish_reason"),
+            "reasoningChars": len(thought) if isinstance(thought, str) else 0,
             "usage": {"in": u.get("prompt_tokens"), "out": u.get("completion_tokens"),
                       "cost": u.get("cost")}}
 
@@ -890,6 +900,11 @@ def player_problem(m):
         return "no responde solo texto (" + "+".join(outs) + ")"
     if ins and "text" not in ins:
         return "no lee texto"
+    # free means a price of exactly 0 for input and output, now (a free period that ends within the hour is over)
+    if m.get("in") != 0 or m.get("out") != 0:
+        return "precio no confirmado en 0"
+    if m.get("until") and m["until"] <= (dt.datetime.now() + dt.timedelta(hours=1)).strftime("%Y-%m-%d %H:%M"):
+        return f"gratis solo hasta {m['until']}"
     if m.get("ctx") and m["ctx"] < MIN_CONTEXT:
         return f"contexto de {m['ctx']} tokens (< {MIN_CONTEXT})"
     if m.get("src") == ["live"] and not CHAT_FAMILY.search(text):
@@ -927,13 +942,13 @@ def chars_of(name, lang):
     return len(f.read_text(encoding="utf-8", errors="replace")) if f.exists() and f.stat().st_size else 0
 
 
-def free_candidates(trust_unreviewed=False, excluded=None):
+def free_candidates(trust_unreviewed=False, excluded=None, hosts=None):
     """One offer per model: the free offers that can play, grouped when they are the same model on several hosts
     (same tactic name, same host id, or the same id plus a size such as -120b-a12b), the best offer first (a key
     for it, the lab's own host, a reviewed host, no daily quota). [excluded] collects (name, model, host, why)."""
     offers = []
     for p in CATALOG.providers.values():
-        if p["check"] == "unreviewed" and not trust_unreviewed:
+        if (p["check"] == "unreviewed" and not trust_unreviewed) or (hosts and p["id"] not in hosts):
             continue
         has_key = key_for(p["id"], p)[0] is not None
         for m in p["models"].values():
@@ -1042,15 +1057,23 @@ def auto_main(argv):
     ap.add_argument("--trust-unreviewed", action="store_true", help="also use hosts not in EmuGaMind's pinned list")
     ap.add_argument("--refresh", action="store_true", help="download every catalog again")
     ap.add_argument("--show-excluded", action="store_true", help="list the free models that cannot play, and why")
+    ap.add_argument("--host", nargs="*", default=[], help="only these providers (e.g. llmtr); only their keys are read")
     args = ap.parse_args(argv)
     langs = [x for x in (s.strip() for s in args.lang.split(",")) if x]
     if not langs or any(x not in LANGS for x in langs):
         sys.exit("--lang: kotlin, python o kotlin,python")
     sys.stdout.reconfigure(line_buffering=True)
-    print("Catálogo de modelos…")
-    CATALOG.build(refresh=args.refresh, progress=lambda s: print("  ·", s))
+    global ONLY_KEY_LABELS
+    if args.host:
+        ONLY_KEY_LABELS = {c for h in args.host for c in (KEY_LABELS.get(h), h, h.split("-")[0]) if c}
+    # Prices and free periods change: a real run always reads the catalogs again; a dry run may use the cache.
+    print("Catálogo de modelos…" + ("" if args.dry_run and not args.refresh else " (descargado de nuevo: precios al día)"))
+    CATALOG.build(refresh=args.refresh or not args.dry_run, progress=lambda s: print("  ·", s))
+    unknown = [h for h in args.host if h not in CATALOG.providers]
+    if unknown:
+        sys.exit(f"--host desconocido: {', '.join(unknown)}")
     excluded = []
-    cands = free_candidates(args.trust_unreviewed, excluded)
+    cands = free_candidates(args.trust_unreviewed, excluded, hosts=set(args.host) or None)
     reasons = {}
     for name, mid, host, why in excluded:
         reasons.setdefault(why, []).append((name, mid, host))
@@ -1139,6 +1162,10 @@ def run_plan(plan, run_dir, results, limited):
                 rec.update(status="omitido", detail="el host limitó los pedidos en esta corrida")
                 add(rec)
                 continue
+            if c["model"] in limited:
+                rec.update(status="omitido", detail="el modelo pide tu consentimiento en el panel del host")
+                add(rec)
+                continue
             print(f"[{i}/{len(plan)}] {target.name} <- {c['model']} @ {c['host']} …", end=" ")
             prompt, _ = build_prompt(c["name"], lang=lang)
             t0 = time.time()
@@ -1148,15 +1175,25 @@ def run_plan(plan, run_dir, results, limited):
                 out = {"ok": False, "status": None, "error": redact(f"{type(e).__name__}: {e}", key)}
             rec["seconds"] = round(time.time() - t0, 1)
             if not out.get("ok"):
+                err = out.get("error", "")
                 if out.get("status") == 429:
                     limited.add(c["provider"])
-                rec.update(status="error", detail=f"HTTP {out.get('status')}: {out.get('error', '')[:300]}")
+                if out.get("status") == 403 and "consent" in err.lower():
+                    limited.add(c["model"])  # approve the provider in the host's dashboard, then run again
+                    err = "el host pide tu consentimiento para este proveedor (apruébalo en su panel). " + err
+                rec.update(status="error", detail=f"HTTP {out.get('status')}: {err[:300]}")
                 print(rec["detail"][:120])
                 add(rec)
                 continue
+            rec.update(finish=out.get("finish"), usage=out.get("usage"))
             code = extract_code(out["text"], lang)
             (run_dir / f"{c['name']}{LANGS[lang]['ext']}.answer.txt").write_text(out["text"], encoding="utf-8")
             notes = check_code(code) if lang == "kotlin" else check_code_py(code)
+            if notes and not out["text"].strip():
+                notes = [f"respuesta vacía (fin: {out.get('finish')}, {out.get('reasoningChars', 0)} caracteres de "
+                         f"razonamiento, {(out.get('usage') or {}).get('out')} tokens de salida)"]
+            elif notes and out.get("finish") == "length":
+                notes.append("la respuesta se cortó por largo (finish=length)")
             if notes:
                 rec.update(status="rechazado", detail="; ".join(notes))
                 print("RECHAZADO:", rec["detail"])
