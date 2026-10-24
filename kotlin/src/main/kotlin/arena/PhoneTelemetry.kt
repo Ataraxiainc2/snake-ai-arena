@@ -42,12 +42,23 @@ object PhoneTelemetry {
         val tmp = File(target.path + ".tmp")
         runCatching { run(adb, "pull", ON_PHONE, tmp.path) }
         if (!tmp.isFile) return Result.NO_FILE
+        renameEntries(tmp)
         if (!tmp.renameTo(target)) {
             target.delete()
             tmp.renameTo(target)
         }
         println("[PHONE] the phone's telemetry copied to ${target.path} (${target.length()} bytes)")
         return Result.COPIED
+    }
+
+    /**
+     * A phone with an app built before a rename writes the old names: the copy uses today's (Names.RENAMED), so each
+     * model finds its entry as llm.<its file name>. Names are JSON strings, so the quoted name is replaced whole.
+     */
+    private fun renameEntries(file: File) {
+        val text = file.readText()
+        val renamed = arena.engine.Names.RENAMED.entries.fold(text) { t, (old, new) -> t.replace("\"$old\"", "\"$new\"") }
+        if (renamed != text) file.writeText(renamed)
     }
 
     /** Runs adb and returns what it printed; a phone that does not answer is given up after a few seconds. */
