@@ -103,13 +103,16 @@ LAB_ALIASES = {
 # Model families -> lab, for hosts that list other labs' models without a "lab/" prefix.
 FAMILY_LABS = [
     (r"nemotron", "nvidia"), (r"claude|fable", "anthropic"), (r"kimi", "moonshotai"), (r"\bgpt|^o\d\b|^o\d-|codex", "openai"),
-    (r"gemini|gemma", "google"), (r"qwen|qwq|qvq", "alibaba"), (r"deepseek", "deepseek"), (r"glm", "zhipuai"),
+    (r"gemini|gemma", "google"), (r"deepseek", "deepseek"), (r"qwen|qwq|qvq", "alibaba"), (r"glm", "zhipuai"),
+    (r"allam", "sdaia"),
     (r"grok", "xai"), (r"mistral|codestral|devstral|magistral|ministral|pixtral|voxtral|leanstral", "mistral"),
     (r"^(meta[ _-]?)?llama|^muse", "meta"), (r"minimax", "minimax"), (r"mimo", "xiaomi"),
     (r"step-?\d", "stepfun"), (r"laguna", "poolside"), (r"mercury", "inception"), (r"solar", "upstage"),
     (r"command|\baya", "cohere"), (r"seed|doubao", "bytedance"), (r"hunyuan", "tencent"), (r"ernie", "baidu"),
+    (r"sensenova", "sensetime"), (r"minicpm", "openbmb"), (r"(^|/)(ling|ring)-\d", "inclusionai"),
+    (r"longcat", "meituan"),
     (r"jais|k2[- _]?horizon", "ifm"), (r"intern-?s|atria|sage-a|agents-a", "internlm"), (r"lfm", "liquid"),
-    (r"phi-?\d", "microsoft"), (r"granite", "ibm"), (r"nova-", "amazon"), (r"sonar", "perplexity"),
+    (r"phi-?\d", "microsoft"), (r"granite", "ibm"), (r"(^|[/_. ])nova-", "amazon"), (r"sonar", "perplexity"),
     (r"hermes", "nousresearch"), (r"inkling", "thinkingmachines"), (r"fugu|namazu", "sakana"),
 ]
 # The arena catalogs' rule (SNAKES.py MODEL_MAKERS, Catalog.kt MAKERS) for a lab that serves other labs' models.
@@ -129,11 +132,13 @@ LAB_BRAND = {
     "thinkingmachines": "ThinkingMachines", "liquid": "LiquidAI", "perplexity": "Perplexity", "morph": "Morph",
     "reflection": "Reflection", "internlm": "InternLM", "microsoft": "Microsoft", "ibm": "IBM", "amazon": "Amazon",
     "baidu": "Baidu", "reka": "Reka", "arcee": "Arcee", "nousresearch": "NousResearch", "ai21": "AI21",
-    "llmtr": "LLMTR",
+    "llmtr": "LLMTR", "sdaia": "SDAIA", "sensetime": "SenseTime", "openbmb": "OpenBMB", "inclusionai": "InclusionAI",
+    "meituan": "Meituan",
 }
 EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max"]
 EFFORT_WORD = {"minimal": "Minimal", "low": "Low", "medium": "Medium", "high": "High", "xhigh": "XHigh", "max": "Max"}
-FREE_WORDS = re.compile(r"\s*[\(\[](free|ücretsiz|ucretsiz|gratis)[\)\]]\s*", re.I)
+FREE_WORDS = re.compile(r"\s*[\(\[](free|ücretsiz|ucretsiz|gratis)\b[^\)\]]{0,30}[\)\]]\s*", re.I)
+TRAILING_FREE = re.compile(r"[\s_-]+free([\s,_-]*\(?\s*unlimited\s*\)?)?\s*$", re.I)
 
 
 def clean(text):
@@ -386,7 +391,9 @@ class Catalog:
                     "free": free, "until": None, "ctx": (m.get("limit") or {}).get("context"),
                     "in": None if plan else cin, "out": None if plan else cout, "note": "incluido en la suscripción" if plan else "",
                     "release": m.get("release_date") or "", "efforts": efforts,
-                    "reasoning": bool(m.get("reasoning")), "src": ["models.dev"]}
+                    "reasoning": bool(m.get("reasoning")), "src": ["models.dev"],
+                    "inMods": (m.get("modalities") or {}).get("input"), "outMods": out,
+                    "family": m.get("family") or ""}
             providers[pid] = prov
         return providers, labs
 
@@ -408,7 +415,9 @@ class Catalog:
                         "ctx": m.get("context_length"), "in": price_per_m(pr.get("prompt")),
                         "out": price_per_m(pr.get("completion")), "efforts": efforts or cur.get("efforts", []),
                         "reasoning": bool(m.get("reasoning")) or cur.get("reasoning", False),
-                        "desc": (m.get("description") or "")[:300]})
+                        "desc": (m.get("description") or "")[:300],
+                        "inMods": arch.get("input_modalities") or cur.get("inMods"),
+                        "outMods": arch.get("output_modalities") or cur.get("outMods")})
             if "llmtr" not in cur["src"]:
                 cur["src"].append("llmtr")
             prov["models"][mid] = cur
@@ -430,6 +439,8 @@ class Catalog:
                         "out": price_per_m(pr.get("completion")),
                         "canonical": cur.get("canonical") or m.get("canonical_slug") or "",
                         "reasoning": "reasoning" in (m.get("supported_parameters") or []),
+                        "inMods": arch.get("input_modalities") or cur.get("inMods"),
+                        "outMods": arch.get("output_modalities") or cur.get("outMods"),
                         "release": cur.get("release") or (dt.datetime.fromtimestamp(m["created"]).strftime("%Y-%m-%d")
                                                           if m.get("created") else "")})
             if exp and not cur["until"]:
@@ -510,7 +521,9 @@ class Catalog:
                     break
         if not lab and prov["isLab"]:
             maker = next((lb for rx, lb in CATALOG_MAKERS if rx.search(m.get("name") or m["id"])), None)
-            lab = maker or prov["id"]
+            # a lab's host also serves other labs' models (Groq: SDAIA's ALLaM; Alibaba: DeepSeek's distills)
+            family = lab_by_family(m["id"] + " " + (m.get("name") or ""))
+            lab = maker or (family if family in LAB_BRAND else None) or prov["id"]
         if not lab:
             lab = lab_by_family(m["id"] + " " + (m.get("name") or ""))
         if not lab and "/" in m["id"]:
@@ -553,6 +566,7 @@ class Catalog:
         entry = self.labs.get(lab)
         raw = FREE_WORDS.sub(" ", m.get("name") or m["id"]).strip()
         raw = re.sub(r"^[^:]{2,40}:\s+", "", raw)  # OpenRouter "Lab: Model"
+        raw = TRAILING_FREE.sub("", raw) or raw  # "Kimi K2.5 Free", "Exo Free Unlimited": the price is not the name
         if entry:
             # the model's own id first: models.dev gives variants (Highspeed, FlashX) the base model's canonical id
             for ref in (m["id"], m.get("canonical") or ""):
@@ -560,11 +574,17 @@ class Catalog:
                     continue
                 for k in (ref.lower(), base_model_id(ref).lower()):
                     if k in entry["models"]:
-                        return entry["models"][k]
+                        return self._no_price(entry["models"][k])
             hit = entry["names"].get(norm(raw))
             if hit:
-                return hit
+                return self._no_price(hit)
         return raw
+
+    @staticmethod
+    def _no_price(name):
+        """A catalog name without its price words: 'Ox Alpha (Free, Unlimited)' -> 'Ox Alpha'."""
+        clean_name = TRAILING_FREE.sub("", FREE_WORDS.sub(" ", name).strip())
+        return clean_name or name
 
 
 def _num(v):
@@ -829,11 +849,70 @@ def list_with_key(prov, key):
 # ---------------------------------------------------------------------------------------------------------------
 # Automatic mode: every free model writes its own .kt and .py
 # ---------------------------------------------------------------------------------------------------------------
-# Free offers that are not chat models although their host lists them as text: image and video generators,
-# NVIDIA's perception/driving/speech services, safety classifiers, translators, and routers (not one model).
-NOT_CHAT = re.compile(r"seedance|seedream|flux|kling|hailuo|\bwan[ -]?2|stable[ -]?diffusion|sdxl|recraft|ideogram|"
-                      r"midjourney|\d{3,4}x\d{3,4}|_\d{3,4}_\d{3,4}|speaker|bevformer|sparsedrive|streampetr|"
-                      r"paligemma|voicechat|safety|translat|usdvalidate|^openrouter/(free|auto)\b|models? router", re.I)
+# Who plays (automatic mode only; the page still lists every model). A player is a general chat model that reads
+# text and answers text: the catalogs' modalities decide first, then these families, which hosts often list as
+# "text" anyway. Each pattern names why the model cannot play.
+NOT_PLAYERS = [
+    ("imagen o video", r"seedance|seedream|flux|kling|hailuo|\bwan[ -]?2|stable[ -]?diffusion|sdxl|recraft|ideogram|"
+                       r"midjourney|dall-?e|imagen|\bveo\b|sora|\bimage\b|t2v|i2v|\bvideo\b|cosmos-(predict|transfer)|"
+                       r"cogview|cogvideo|hunyuan-?(image|video)|qwen-?image|"
+                       r"\d{3,4}x\d{3,4}|_\d{3,4}_\d{3,4}"),
+    ("voz o audio", r"\btts\b|text-to-speech|speech|\basr\b|\bstt\b|whisper|audio|voice|music|lyria|transcri|riva|"
+                    r"parakeet|canary|fastpitch|magpie|studiovoice|maxine|audio2face|speaker|deepgram|elevenlabs|"
+                    r"scribe|cartesia|playht|kokoro|realtime|[-_ ]live\b"),
+    ("traducción", r"translat"),
+    ("seguridad o clasificador", r"guard|safety|moderat|shield|jailbreak|topic-control|aegis|\bpii\b|reward|classif"),
+    ("embeddings o búsqueda", r"embed|rerank|retriev|\bclip\b|siglip"),
+    ("visión, OCR o conducción", r"\bocr\b|pars(e|er)\b|detect|segment|tracking|\bdepth\b|bevformer|sparsedrive|"
+                                 r"streampetr|occupancy|paligemma|\bdino|\bsam\b|yolo|owl-?vit|grounding|"
+                                 r"usdvalidate|usdsearch"),
+    ("ciencia (proteínas, clima)", r"\besm-?\d|esmfold|alphafold|diffdock|molmim|\bevo-?2|genmol|fourcastnet|"
+                                   r"weathernext|timesfm"),
+    ("enrutador, no un modelo", r"^openrouter/(free|auto)\b|router|\bauto\b"),
+]
+NOT_PLAYERS = [(why, re.compile(rx, re.I)) for why, rx in NOT_PLAYERS]
+# Names that only a chat model has: the proof needed when a host lists a model without any metadata.
+CHAT_FAMILY = re.compile(r"instruct|chat|\bit\b|-it\b|coder|code|thinking|reason|\bgpt|claude|gemini|gemma|qwen|qwq|"
+                         r"llama|mistral|mixtral|magistral|devstral|ministral|deepseek|kimi|glm|grok|minimax|mimo|"
+                         r"nemotron|phi-?\d|granite|command|\baya|hermes|olmo|step-?\d|seed-oss|hunyuan|ernie|"
+                         r"internlm|intern-s|yi-|baichuan|falcon|jamba|solar|lfm|exaone|sarvam|mercury|laguna", re.I)
+MIN_CONTEXT = 16000  # the prompt (rules + own code + the top 3) is about 8k tokens; the answer needs room too
+
+
+def player_problem(m):
+    """None if the model can play, else why not (for --show-excluded)."""
+    text = f"{m['id']} {m.get('name') or ''} {m.get('family') or ''}"
+    for why, rx in NOT_PLAYERS:
+        if rx.search(text):
+            return why
+    outs, ins = m.get("outMods"), m.get("inMods")
+    if outs and any(o != "text" for o in outs):
+        return "no responde solo texto (" + "+".join(outs) + ")"
+    if ins and "text" not in ins:
+        return "no lee texto"
+    if m.get("ctx") and m["ctx"] < MIN_CONTEXT:
+        return f"contexto de {m['ctx']} tokens (< {MIN_CONTEXT})"
+    if m.get("src") == ["live"] and not CHAT_FAMILY.search(text):
+        return "sin datos y el nombre no es de un modelo de chat"
+    return None
+
+
+# A host that writes the full mixture-of-experts size (-120b-a12b) next to one that leaves it out: the same model.
+# Only total + active sizes count; a lone size (qwen3.8 vs qwen3.8-27b) can be another model of the family.
+SIZE_TAIL = re.compile(r"^-\d+(\.\d+)?b-?a\d+(\.\d+)?b(-(instruct|it))?$")
+
+
+# What a host adds to a model's id that does not make it another model: quantization, a mode, a region.
+HOST_VARIANT = re.compile(r"[-_](fp8|fp16|bf16|int4|int8|awq|gptq|autoround|mlx|gguf|no-?thinking)\b|@\w+$", re.I)
+
+
+def same_model_keys(name, mid):
+    """Keys that identify one model across hosts: the tactic name and the host's id without lab, ':free', '-free',
+    quantization or region."""
+    # only ':free' is a price; other tags are part of the model (Ollama style: qwen3.6:27b)
+    mid = re.sub(r":(free|beta|exacto|nitro|floor|online)$", "", mid.lstrip("~"), flags=re.I).replace(":", "-")
+    return (re.sub(r"[^a-z0-9]", "", HOST_VARIANT.sub("", name).lower()),
+            HOST_VARIANT.sub("", base_model_id(mid)).lower())
 AUTO_SECONDS = 240  # the arena's 4-minute rule, per answer
 RUNS = CACHE / "auto_runs"
 
@@ -848,34 +927,71 @@ def chars_of(name, lang):
     return len(f.read_text(encoding="utf-8", errors="replace")) if f.exists() and f.stat().st_size else 0
 
 
-def free_candidates(trust_unreviewed=False):
-    """One offer per tactic name: the free offers grouped by the name they would play as, the best offer first
-    (a key for it, the lab's own host, a reviewed host, no daily quota)."""
-    groups = {}
+def free_candidates(trust_unreviewed=False, excluded=None):
+    """One offer per model: the free offers that can play, grouped when they are the same model on several hosts
+    (same tactic name, same host id, or the same id plus a size such as -120b-a12b), the best offer first (a key
+    for it, the lab's own host, a reviewed host, no daily quota). [excluded] collects (name, model, host, why)."""
+    offers = []
     for p in CATALOG.providers.values():
         if p["check"] == "unreviewed" and not trust_unreviewed:
             continue
         has_key = key_for(p["id"], p)[0] is not None
         for m in p["models"].values():
-            if not m.get("free") or NOT_CHAT.search(m["id"] + " " + (m.get("name") or "")):
+            if not m.get("free"):
                 continue
             try:
                 n = CATALOG.names_for(p["id"], m["id"], None, None)
             except KeyError:
                 continue
+            why = player_problem(m)
+            if why:
+                if excluded is not None:
+                    excluded.append((n["name"], m["id"], p["host"], why))
+                continue
             rank = (not has_key, m.get("lab") != p["id"], p["check"] != "reviewed", bool(m.get("note")))
-            offer = {"name": n["name"], "provider": p["id"], "host": p["host"], "model": m["id"], "hasKey": has_key,
-                     "until": m.get("until"), "note": m.get("note") or "", "rank": rank}
-            key = re.sub(r"[^a-z0-9]", "", n["name"].lower())  # Qwen3.8-27B and Qwen3.8_27B are one entry
-            groups.setdefault(key, []).append(offer)
+            offers.append({"name": n["name"], "provider": p["id"], "host": p["host"], "model": m["id"],
+                           "hasKey": has_key, "until": m.get("until"), "note": m.get("note") or "", "rank": rank,
+                           "keys": same_model_keys(n["name"], m["id"])})
+    # union of offers that share a key, or whose host ids differ only by a size tail
+    parent = list(range(len(offers)))
+
+    def root(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    seen = {}
+    for i, o in enumerate(offers):
+        for k in o["keys"]:
+            if k in seen:
+                parent[root(i)] = root(seen[k])
+            else:
+                seen[k] = i
+    bases = sorted({o["keys"][1] for o in offers}, key=len)
+    for i, o in enumerate(offers):
+        b = o["keys"][1]
+        for short in bases:
+            if len(short) < len(b) and b.startswith(short) and SIZE_TAIL.match(b[len(short):]):
+                j = seen[short]
+                # the names must agree too: "qwen3.6" listed as Qwen3.6 27B is not Qwen3.6-35B-A3B
+                if o["keys"][0].startswith(offers[j]["keys"][0]):
+                    parent[root(i)] = root(j)
+    groups = {}
+    for i, o in enumerate(offers):
+        groups.setdefault(root(i), []).append(o)
     out = []
-    for offers in groups.values():
-        offers.sort(key=lambda o: o["rank"])
-        best = dict(offers[0])
-        # keep the spelling that already has a file, if any
-        named = [o["name"] for o in offers if any(file_of(o["name"], lg).exists() for lg in LANGS)]
-        best["name"] = named[0] if named else best["name"]
-        best["others"] = len(offers) - 1
+    for group in groups.values():
+        group.sort(key=lambda o: o["rank"])
+        best = dict(group[0])
+        # the name that already has code, else an existing placeholder, else a clean name (no quantization or
+        # region), the most specific one (with its size)
+        names = sorted({o["name"] for o in group}, key=lambda n: (-max(chars_of(n, lg) for lg in LANGS),
+                                                                   not any(file_of(n, lg).exists() for lg in LANGS),
+                                                                   len(HOST_VARIANT.findall(n)), -len(n)))
+        best["name"] = names[0]
+        best["aliases"] = names[1:]
+        best["others"] = len(group) - 1
         out.append(best)
     return sorted(out, key=lambda o: o["name"].lower())
 
@@ -925,6 +1041,7 @@ def auto_main(argv):
     ap.add_argument("--skip-existing", action="store_true", help="never ask: files with code are left alone")
     ap.add_argument("--trust-unreviewed", action="store_true", help="also use hosts not in EmuGaMind's pinned list")
     ap.add_argument("--refresh", action="store_true", help="download every catalog again")
+    ap.add_argument("--show-excluded", action="store_true", help="list the free models that cannot play, and why")
     args = ap.parse_args(argv)
     langs = [x for x in (s.strip() for s in args.lang.split(",")) if x]
     if not langs or any(x not in LANGS for x in langs):
@@ -932,7 +1049,18 @@ def auto_main(argv):
     sys.stdout.reconfigure(line_buffering=True)
     print("Catálogo de modelos…")
     CATALOG.build(refresh=args.refresh, progress=lambda s: print("  ·", s))
-    cands = free_candidates(args.trust_unreviewed)
+    excluded = []
+    cands = free_candidates(args.trust_unreviewed, excluded)
+    reasons = {}
+    for name, mid, host, why in excluded:
+        reasons.setdefault(why, []).append((name, mid, host))
+    print(f"\nNo participan {len(excluded)} ofertas gratuitas que no son modelos de chat: " +
+          ", ".join(f"{why} {len(v)}" for why, v in sorted(reasons.items(), key=lambda x: -len(x[1]))))
+    if args.show_excluded:
+        for why, items in sorted(reasons.items()):
+            print(f"  [{why}]")
+            for name, mid, host in sorted(set(items)):
+                print(f"    {mid} @ {host} ({name})")
     if args.only:
         cands = [c for c in cands if any(w.lower() in c["name"].lower() for w in args.only)]
     no_key = [c for c in cands if not c["hasKey"]]
@@ -961,12 +1089,17 @@ def auto_main(argv):
             todo.append((lang, have))
         if todo:
             plan.append((c, todo))
+    for lang in langs:
+        if standings(lang) is None:
+            print(f"\nAVISO: no hay {LANGS[lang]['telemetry'].name}: los prompts de {lang} irán sin el top 3 ni tu "
+                  "puesto (una partida primero los mejora).")
     print(f"\nPlan: {len(plan)} modelos, {sum(len(t) for _, t in plan)} archivos.")
     for c, todo in plan:
         rewrite = " (tiene código: preguntará)" if args.dry_run else " (reescribe {} car.)"
         files = ", ".join(f"{c['name']}{LANGS[lg]['ext']}" + (rewrite.format(have) if have else
                           (" (vacío)" if file_of(c['name'], lg).exists() else " (nuevo)")) for lg, have in todo)
         extra = f"; hasta {c['until']}" if c["until"] else ""
+        extra += f"; mismo modelo que {', '.join(c['aliases'])}" if c.get("aliases") else ""
         print(f"  {c['model']} @ {c['host']}{extra}{'; ' + c['note'] if c['note'] else ''} -> {files}")
     if args.dry_run or not plan:
         return
