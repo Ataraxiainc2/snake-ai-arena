@@ -1070,6 +1070,29 @@ def brief_http(status, err):
     return "error", f"HTTP {status}"
 
 
+def rate_limit(err):
+    """(scope, wait seconds or None, local reset time or '') from a 429 body: 'host' when the account's quota is
+    used up (llmtr: free_quota_exhausted, scope user), else 'model' (a short per-model limit)."""
+    try:
+        e = json.loads(err).get("error") or {}
+    except (ValueError, AttributeError):
+        e = {}
+    d = e.get("details") if isinstance(e.get("details"), dict) else {}
+    text = (str(e.get("message") or err)).lower()
+    wait = d.get("retryAfterSeconds")
+    reset = ""
+    if d.get("resetAt"):
+        try:
+            when = dt.datetime.fromisoformat(str(d["resetAt"]).replace("Z", "+00:00")).astimezone()
+            reset = when.strftime("%d-%m %H:%M")
+            wait = wait if isinstance(wait, (int, float)) else (when - dt.datetime.now().astimezone()).total_seconds()
+        except ValueError:
+            pass
+    quota = d.get("scope") in ("user", "account", "key") or "quota" in text or "daily" in text or \
+        (isinstance(wait, (int, float)) and wait > 120)
+    return ("host" if quota else "model"), (wait if isinstance(wait, (int, float)) else None), reset
+
+
 def brief_check(line):
     """One short reason from the arena check's PASS/FAIL line."""
     msg = re.sub(r"^(PASS|FAIL)\s+\S+?:\s*", "", line or "")
@@ -1088,7 +1111,7 @@ def brief_check(line):
 
 def kind_of(reason):
     """The group a reason belongs to in the summary."""
-    return re.sub(r" ?\(.*|:.*", "", reason)
+    return re.sub(r" ?\(.*|: .*", "", reason)
 
 
 def auto_main(argv):
@@ -1245,11 +1268,16 @@ def run_plan(plan, run_dir, results, limited):
     width = max(len(c["name"]) + 3 for c, _ in plan)
     n = 0
 
-    def add(rec, status, brief, extra=""):  # one short line per file; results.json is current after every file
+    skipped = {}  # host -> files left out because its quota ran out (one line at the end, not one per file)
+
+    def add(rec, status, brief, extra="", quiet=False):  # one short line per file; results.json always current
         rec.update(status=status, brief=brief)
-        mark = {"escrito": "✓", "rechazado": "✗", "error": "!", "omitido": "–"}[status]
-        secs = f"  {rec['seconds']:.0f} s" if rec.get("seconds") else ""
-        print(f"[{n:>{len(str(total))}}/{total}] {rec['file']:<{width}} {mark} {brief}{extra}{secs}")
+        if quiet:
+            skipped[rec["provider"]] = skipped.get(rec["provider"], 0) + 1
+        else:
+            mark = {"escrito": "✓", "rechazado": "✗", "error": "!", "omitido": "–"}[status]
+            secs = f"  {rec['seconds']:.0f} s" if rec.get("seconds") else ""
+            print(f"[{n:>{len(str(total))}}/{total}] {rec['file']:<{width}} {mark} {brief}{extra}{secs}")
         results.append(rec)
         save_results(run_dir, results)
 
@@ -1262,24 +1290,41 @@ def run_plan(plan, run_dir, results, limited):
             rec = {"name": c["name"], "lang": lang, "file": target.name, "provider": c["provider"],
                    "model": c["model"]}
             if c["provider"] in limited:
-                add(rec, "omitido", "límite de pedidos de este host")
+                add(rec, "omitido", "cuota del host agotada", quiet=True)
                 continue
             if c["model"] in limited:
-                add(rec, "omitido", "pide tu consentimiento en el panel del host")
+                add(rec, "omitido", "el modelo no aceptó el pedido anterior (consentimiento o límite)")
                 continue
             prompt, _ = build_prompt(c["name"], lang=lang)
-            t0 = time.time()
-            try:
-                out = send_chat(prov, c["model"], prompt, None, key, timeout=AUTO_SECONDS)
-            except (OSError, ValueError) as e:
-                out = {"ok": False, "status": None, "error": redact(f"{type(e).__name__}: {e}", key)}
-            rec["seconds"] = round(time.time() - t0, 1)
+            for attempt in (1, 2):  # a short per-model limit gets one retry after its wait
+                t0 = time.time()
+                try:
+                    out = send_chat(prov, c["model"], prompt, None, key, timeout=AUTO_SECONDS)
+                except (OSError, ValueError) as e:
+                    out = {"ok": False, "status": None, "error": redact(f"{type(e).__name__}: {e}", key)}
+                rec["seconds"] = round(time.time() - t0, 1)
+                if out.get("status") != 429:
+                    break
+                scope, wait, reset = rate_limit(out.get("error", ""))
+                if scope == "host" or attempt == 2:
+                    break
+                pause = min(max(wait or 30, 5), 120)
+                print(f"   (límite breve en {c['model']}: espera {pause:.0f} s y reintenta)")
+                time.sleep(pause)
             if not out.get("ok"):
                 err = out.get("error", "")
-                rec["detail"] = f"HTTP {out.get('status')}: {err[:400]}"
+                rec["detail"] = f"HTTP {out.get('status')}: {err[:600]}"
                 status, brief = brief_http(out.get("status"), err)
                 if out.get("status") == 429:
-                    limited.add(c["provider"])
+                    scope, wait, reset = rate_limit(err)
+                    if scope == "host":
+                        limited.add(c["provider"])
+                        limited.add(("reset", c["provider"], reset))
+                        brief = f"cuota gratis de {c['provider']} agotada" + (f" hasta el {reset}" if reset else "") + \
+                                ": se salta el resto de este host"
+                    else:
+                        limited.add(c["model"])
+                        brief = "límite de pedidos de este modelo"
                 if brief.startswith("pide tu consentimiento"):
                     limited.add(c["model"])  # approve the provider in the host's dashboard, then run again
                 add(rec, status, brief)
@@ -1315,6 +1360,8 @@ def run_plan(plan, run_dir, results, limited):
             rec["chars"] = len(code.rstrip()) + 1
             med = re.search(r"median=([\d.]+) ms", line)
             add(rec, "escrito", f"escrito, {rec['chars']} car." + (f", {med.group(1)} ms por jugada" if med else ""))
+    for host, count in skipped.items():
+        print(f"   … y {count} archivos más de {host} sin enviar: su cuota gratis está agotada.")
 
 
 # ---------------------------------------------------------------------------------------------------------------
