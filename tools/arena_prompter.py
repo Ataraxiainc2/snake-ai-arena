@@ -1141,6 +1141,19 @@ def auto_main(argv):
     print(f"\nResumen: {count}. Respuestas y detalle en {run_dir}")
 
 
+def unhide_in_git(paths):
+    """Empty placeholders are kept out of git with .git/info/exclude; a file that now has code must show up."""
+    exclude = ARENA / ".git" / "info" / "exclude"
+    if not exclude.exists():
+        return []
+    rel = {p.resolve().relative_to(ARENA.resolve()).as_posix() for p in paths}
+    lines = exclude.read_text(encoding="utf-8").splitlines()
+    keep = [ln for ln in lines if ln.strip() not in rel]
+    if len(keep) != len(lines):
+        exclude.write_text("\n".join(keep) + "\n", encoding="utf-8", newline="\n")
+    return sorted(rel & {ln.strip() for ln in lines})
+
+
 def save_results(run_dir, results):
     tmp = run_dir / "results.json.tmp"
     tmp.write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
@@ -1214,6 +1227,7 @@ def run_plan(plan, run_dir, results, limited):
             tmp = target.with_name(target.name + ".tmp")
             tmp.write_text(code.rstrip() + "\n", encoding="utf-8", newline="\n")
             tmp.replace(target)
+            unhide_in_git([target])
             rec.update(status="escrito", chars=len(code.rstrip()) + 1)
             print(f"ESCRITO ({rec['chars']} car.) {line[:90]}")
             add(rec)
