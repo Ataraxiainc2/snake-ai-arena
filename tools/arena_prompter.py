@@ -674,6 +674,22 @@ def key_for(pid, prov):
     return None, None
 
 
+# How each host's keys start: a key of another provider is caught before it is sent (the host is who checks the key,
+# not the lab that made the model: Kimi served by NVIDIA needs an NVIDIA key).
+KEY_PREFIX = {"integrate.api.nvidia.com": "nvapi-", "api.anthropic.com": "sk-ant-", "openrouter.ai": "sk-or-",
+              "api.openai.com": "sk-", "api.groq.com": "gsk_", "generativelanguage.googleapis.com": "AIza",
+              "api.x.ai": "xai-", "llmtr.com": "llmtr-", "api.cerebras.ai": "csk-"}
+
+
+def key_problem(prov, key):
+    """None if the key may belong to this host, else what is wrong (never the key itself)."""
+    want = KEY_PREFIX.get(prov["host"])
+    if want and not key.startswith(want):
+        return (f"Esa clave no es de {prov['name']}: {prov['host']} usa claves que empiezan con «{want}». "
+                f"El modelo puede ser de otro laboratorio, pero la clave es la del host que lo sirve.")
+    return None
+
+
 def redact(text, key):
     return text.replace(key, "***") if key else text
 
@@ -1333,6 +1349,10 @@ def run_plan(plan, run_dir, results, limited):
             if c["model"] in limited:
                 add(rec, "omitido", "el modelo no aceptó el pedido anterior (consentimiento o límite)")
                 continue
+            if key_problem(prov, key):
+                limited.add(c["provider"])
+                add(rec, "error", f"la clave de {c['provider']} no tiene el formato de {prov['host']}: no se envió")
+                continue
             prompt, _ = build_prompt(c["name"], lang=lang)
             for attempt in (1, 2):  # a short per-model limit gets one retry after its wait
                 t0 = time.time()
@@ -1505,6 +1525,8 @@ def r_key(req):
     key = (req.get("key") or "").strip()
     if key and (re.search(r"[\s,;]", key) or len(key) < 8):
         raise KeyError("pega una sola clave, sin espacios ni comas")
+    if key and key_problem(prov, key):
+        raise KeyError(key_problem(prov, key))
     if key:
         SESSION_KEYS[prov["id"]] = key
     else:
@@ -1550,6 +1572,10 @@ def r_send(req):
     key, where = key_for(prov["id"], prov)
     if not key:
         raise KeyError(f"no hay clave para {prov['name']}: agrégala en D:\\SC\\AK\\A o pégala en la página")
+    if key_problem(prov, key):
+        raise KeyError(f"No se envió nada: la clave {where} no sirve. " + key_problem(prov, key) +
+                       (" Para volver a la de D:\\SC\\AK\\A, deja el campo de clave vacío y pulsa Usar."
+                        if where.startswith("pegada") else ""))
     t0 = time.time()
     try:
         out = send_chat(prov, model, prompt, effort, key)
@@ -1558,6 +1584,10 @@ def r_send(req):
     out["seconds"] = round(time.time() - t0, 1)
     out["keyFrom"] = where
     out["host"] = prov["host"]
+    if out.get("status") in (401, 403):
+        out["hint"] = (f"{prov['host']} rechazó la clave ({where}): tiene que ser una clave vigente de {prov['name']}, "
+                       "el host que sirve el modelo." + (" Para volver a la de D:\\SC\\AK\\A, deja el campo de clave "
+                                                         "vacío y pulsa Usar." if where.startswith("pegada") else ""))
     if out.get("ok"):
         out["code"] = extract_code(out["text"])
         out["checks"] = check_code(out["code"])

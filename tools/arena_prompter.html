@@ -386,8 +386,8 @@ $("send").onclick=async()=>{
 function showResponse(r,name){
   $("respCard").hidden=false;
   if(!r.ok){
-    $("respMeta").textContent=`${r.host||""} · ${r.seconds??"?"} s`;
-    $("respNotes").innerHTML=`<div class="notes bad"><b>HTTP ${esc(r.status??"sin respuesta")}</b><br><span class="mono small">${esc(r.error)}</span></div>`;
+    $("respMeta").textContent=`${r.host||""} · ${r.seconds??"?"} s · clave ${r.keyFrom||"?"}`;
+    $("respNotes").innerHTML=`<div class="notes bad"><b>HTTP ${esc(r.status??"sin respuesta")}</b>${r.hint?" — "+esc(r.hint):""}<br><span class="mono small">${esc(r.error)}</span></div>`;
     $("code").value="";$("full").value=r.error||"";return;
   }
   const u=r.usage||{};
