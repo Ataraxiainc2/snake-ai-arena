@@ -34,7 +34,10 @@ class ViewerRenderTest {
             assertTrue(w - cell * arena.width < cell && h - cell * arena.height < cell, "board ${arena.width}x${arena.height} on ${w}x$h")
             val image = Viewer.render(arena, w, h)
             out?.let { ImageIO.write(image, "png", File(it, "viewer_${w}x$h.png")) }
-            if (w == 3840) out?.let { ImageIO.write(Viewer.render(arena, w, h, "Episode 1 finished"), "png", File(it, "viewer_episode_end.png")) }
+            if (w == 3840) out?.let {
+                ImageIO.write(Viewer.render(arena, w, h, "Episode 1 finished"), "png", File(it, "viewer_episode_end.png"))
+                ImageIO.write(Viewer.render(arena, w, h, pause = true), "png", File(it, "viewer_pause.png"))
+            }
             arena.close()
         }
     }

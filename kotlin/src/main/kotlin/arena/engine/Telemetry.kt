@@ -15,8 +15,6 @@ object Telemetry {
 
     fun write(file: File, a: Arena, brain: Brain?, run: Map<String, Any?>, events: List<String>) {
         val ranked = a.snakes.sortedByDescending { it.rankingScore }
-        val kills = HashMap<String, HashMap<String, Int>>()
-        for (s in a.snakes) for (l in s.lives) l.killer?.let { k -> kills.getOrPut(k) { HashMap() }.merge(s.name, 1, Int::plus) }
         val ranking = ranked.mapIndexed { i, s ->
             listOf(i + 1, s.name, round(s.rankingScore, 1), s.bestScore, s.entry?.chars, round(s.codeFactor, 3), type(s))
         }
@@ -28,11 +26,10 @@ object Telemetry {
             for (l in s.lives) for ((k, v) in l.turnsToScore) milestones.getOrPut(k) { ArrayList() }.add(v)
             for ((k, v) in s.milestones) milestones.getOrPut(k) { ArrayList() }.add(v)
             llm[s.name] = linkedMapOf(
-                "max" to s.bestScore, "now" to s.score, "len" to s.body.size, "foods" to s.foodsEaten,
+                "max" to s.bestScore, "now" to s.score, "foods" to s.foodsEaten,
                 "deaths" to count(ended.map { it.cause }),
                 "death_score_phase" to count(ended.map { phase(it.score) }),
                 "killed_by" to count(ended.mapNotNull { it.killer }),
-                "kills" to (kills[s.name] ?: emptyMap<String, Int>()),
                 "ms" to linkedMapOf(
                     "avg" to if (s.decCount > 0) round(s.decSumMs / s.decCount, 3) else null,
                     "p99" to s.p99Ms()?.let { round(it, 3) }, "max" to round(s.decMaxMs, 2), "over_budget" to s.decOver,
@@ -48,7 +45,7 @@ object Telemetry {
         val data = linkedMapOf<String, Any?>(
             "readme" to ("Kotlin arena (kotlin/ next to SNAKES.py), same game as SNAKES.py in cells. Layout as telemetry.json: " +
                 "ranking rows = [rank, name, ranking_score, max_score, code_chars, code_factor, type]; llm.<name>: max/now score, " +
-                "len, foods, deaths by cause, death_score_phase, killed_by/kills, ms = decide() time per call (avg, p99, max, " +
+                "foods, deaths by cause, death_score_phase, killed_by, ms = decide() time per call (avg, p99, max, " +
                 "over_budget = calls above arena.budget_ms; timeouts = above twice the budget, played at random), median_turns_to " +
                 "10/100/200/300, last_lives rows = [score, cause, killer, turns lived]."),
             "updated" to now(),

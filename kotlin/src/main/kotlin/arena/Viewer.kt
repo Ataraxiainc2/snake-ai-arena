@@ -241,16 +241,25 @@ object Viewer {
         return 0
     }
 
+    /** The standings on screen (on pause and at the end of an episode), not computed every frame. */
+    private var table: List<Standings.Row> = emptyList()
+    private var tableAt = 0L
+
     /** What the window paints, taken from [a] on the game thread. */
     private fun frameOf(a: Arena, colors: Array<Color>, stats: String, episodeEnd: String?): Frame {
         val n = a.snakes.size
         val now = System.currentTimeMillis()
+        // the standings show only on pause and at the end of an episode: computed only then
+        if ((paused || episodeEnd != null) && (episodeEnd != null || table.size != n || now - tableAt >= PAUSED_REFRESH_MS)) {
+            table = Standings.of(a)
+            tableAt = now
+        }
         val blink = now / 400 % 2 == 0L
         return Frame(
             a.width, a.height, a.frame, a.episode, Array(n) { a.snakes[it].body.toArray() },
             BooleanArray(n) { val s = a.snakes[it]; blink && (s.warning || a.frame < s.flashUntil) },
             a.foodList(),
-            Standings.of(a),
+            table,
             colors, a.snakes.firstOrNull { it.kind == Kind.HUMAN }?.body?.head ?: -1, stats, episodeEnd,
             a.snakes.firstOrNull { it.kind == Kind.HUMAN }?.dir ?: 0,
             (holdUntil - now).takeIf { it > 0 }?.let { left -> if (holdCountdown) "${(left + 999) / 1000}" else "" },
@@ -258,10 +267,14 @@ object Viewer {
     }
 
     /** The screen as the window would paint [a] on a [width] x [height] screen (tests and screenshots). */
-    internal fun render(a: Arena, width: Int, height: Int, episodeEnd: String? = null): java.awt.image.BufferedImage {
+    internal fun render(a: Arena, width: Int, height: Int, episodeEnd: String? = null, pause: Boolean = false): java.awt.image.BufferedImage {
         val image = java.awt.image.BufferedImage(width, height, java.awt.image.BufferedImage.TYPE_INT_RGB)
         val g = image.createGraphics()
+        val was = paused
+        paused = pause
+        tableAt = 0L
         paint(g, frameOf(a, colorsOf(a), "", episodeEnd), width, height)
+        paused = was
         g.dispose()
         return image
     }
@@ -355,7 +368,7 @@ object Viewer {
         g.font = font.deriveFont(fs.toFloat())
         val fm = g.fontMetrics
         // top left: the game and what it costs
-        shadowed(g, "turn ${f.turn}  episode ${f.episode + 1}${if (paused) "  PAUSED" else ""}   arrows  +/-  P  Esc", fs, fs + fm.ascent, Color.WHITE, 150)
+        shadowed(g, "turn ${f.turn}  episode ${f.episode + 1}   arrows  +/-  P: pause and standings  Esc", fs, fs + fm.ascent, Color.WHITE, 150)
         shadowed(g, f.stats, fs, fs + fm.ascent + fm.height, Color.WHITE, 150)
         // top centre: SNAKES.py's messages
         val now = System.currentTimeMillis()
@@ -368,7 +381,8 @@ object Viewer {
             y += mm.height
         }
         // every snake's standings over the game, small, at the bottom centre, each row in its snake's colour
-        if (f.episodeEnd == null) table(g, f, Rectangle(0, height * 3 / 4, width, height / 4 - fs / 2), fs, 170)
+        // the standings are not on the game: P shows them all, in detail, full screen
+        if (paused && f.episodeEnd == null) pauseScreen(g, f, width, height, fs)
         f.episodeEnd?.let { episodeEnd(g, f, it, width, height, fs) }
         f.hold?.takeIf { it.isNotEmpty() }?.let { n -> // the 3-2-1, large in the middle
             g.font = font.deriveFont(height / 5f)
@@ -389,14 +403,13 @@ object Viewer {
     }
 
     /**
-     * Every snake's standings ([Standings]) at the bottom of [area], centred, as large as they fit: up to [maxRows] rows a
-     * column while there is width for more columns, the font shrinking from [size] to [MIN_FONT]; beyond that the last
-     * rows are left out, and said so.
+     * Every snake's standings ([Standings]) at the bottom of [area], centred, as large as they fit: across the whole
+     * width (as many columns as fit, [maxRows] rows each while there are columns to spare), the font shrinking from
+     * [size] to [MIN_FONT]; beyond that the last rows are left out, and said so.
      */
-    private fun table(g: Graphics2D, f: Frame, area: Rectangle, size: Int, alpha: Int, maxRows: Int = ROWS) {
+    private fun table(g: Graphics2D, f: Frame, area: Rectangle, size: Int, alpha: Int, maxRows: Int = ROWS, detail: Boolean = false) {
         val rows = f.ranking
-        val nameWidth = (rows.maxOfOrNull { it.name.length } ?: 4).coerceIn(4, MAX_NAME)
-        val header = Standings.header(nameWidth)
+        val header = if (detail) Standings.detailHeader() else Standings.header()
         var fs = size
         while (true) {
             g.font = font.deriveFont(fs.toFloat())
@@ -409,14 +422,15 @@ object Viewer {
                 val perColumn = minOf(fits, (rows.size + used - 1) / used)
                 val shown = minOf(rows.size, perColumn * used)
                 val x0 = area.x + (area.width - used * colW) / 2
-                val top = area.y + area.height - (perColumn + 1) * fm.height
+                // over the game at the bottom; on the pause and episode-end screens under their title
+                val top = if (detail) area.y else area.y + area.height - (perColumn + 1) * fm.height
                 for (c in 0 until used) {
                     val x = x0 + c * colW
                     var y = top + fm.ascent
                     shadowed(g, header, x, y, Color.WHITE, alpha)
                     for (r in rows.subList(c * perColumn, minOf(shown, (c + 1) * perColumn))) {
                         y += fm.height
-                        val line = Standings.line(r, nameWidth)
+                        val line = if (detail) Standings.detail(r) else Standings.line(r)
                         shadowed(g, line, x, y, f.colors[r.snake], alpha)
                     }
                 }
@@ -440,7 +454,19 @@ object Viewer {
         val fm = g.fontMetrics
         shadowed(g, text, (width - fm.stringWidth(text)) / 2, top + fs + fm.ascent, Color.WHITE, 255)
         val tableTop = top + fs + 2 * fm.height
-        table(g, f, Rectangle(0, tableTop, width, top + boxH - tableTop - fs), fs * 2, 255, maxRows = Int.MAX_VALUE)
+        table(g, f, Rectangle(0, tableTop, width, top + boxH - tableTop - fs), fs * 2, 255, maxRows = Int.MAX_VALUE, detail = true)
+    }
+
+    /** Paused (P): the game dimmed and every snake's standings in detail, full screen, until P again. */
+    private fun pauseScreen(g: Graphics2D, f: Frame, width: Int, height: Int, fs: Int) {
+        g.color = Color(0, 0, 0, 225)
+        g.fillRect(0, 0, width, height)
+        g.font = font.deriveFont(fs * 1.5f)
+        val fm = g.fontMetrics
+        val title = "PAUSED  turn ${f.turn}  episode ${f.episode + 1}  ($PAUSE_LEGEND)  P: continue"
+        shadowed(g, title, (width - fm.stringWidth(title)) / 2, fs * 2 + fm.ascent, Color.WHITE, 255)
+        val top = fs * 3 + fm.height * 2
+        table(g, f, Rectangle(0, top, width, height - top - fs * 2), fs * 2, 255, maxRows = Int.MAX_VALUE, detail = true)
     }
 
     private fun shadowed(g: Graphics2D, t: String, x: Int, y: Int, c: Color, alpha: Int) {
@@ -451,9 +477,10 @@ object Viewer {
     }
 
     private val ALERT = Color(255, 50, 50)
-    private const val ROWS = 10
+    private const val ROWS = 4
+    private const val PAUSED_REFRESH_MS = 1_000L
+    private const val PAUSE_LEGEND = "ep: best this episode; best, rank: all-time; deaths by cause; avg: score at death; ms per move"
     private const val MIN_FONT = 8
-    private const val MAX_NAME = 34
 
     /** IBM Plex Mono Medium (Google Fonts, SIL Open Font License; resources/fonts/OFL.txt): small and legible. */
     private val font: Font = runCatching {

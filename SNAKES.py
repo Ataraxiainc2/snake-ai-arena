@@ -2323,8 +2323,6 @@ class Game:
             y = head_y + BLOCK_SIZE // 2 - rank_text.get_height() // 2
             self.ventana.blit(rank_text, (x, y))
 
-        # Every snake's standings at the bottom centre, each row in its snake's own colour (the Kotlin arena's table).
-        self.draw_standings(pygame.Rect(0, self.ALTO * 3 // 4, self.ANCHO, self.ALTO // 4 - 4), 200)
 
         instructions = tr("hud_instructions")
         draw_text(
@@ -2357,6 +2355,9 @@ class Game:
             for i, line in enumerate(self.learning_log[-7:]):
                 draw_text(self.ventana, line, self.font_info_alive, WHITE, (20, self.ALTO - 180 + i * 18))
 
+        # The standings are not on the game: P (pause) shows them all, in detail, full screen (as the Kotlin arena).
+        if self.paused:
+            self.draw_pause_standings()
         self.draw_hold()
         pygame.display.update()
 
@@ -2364,27 +2365,46 @@ class Game:
         """Every snake by its place in this episode: best score in it, then score now, then the all-time ranking."""
         return sorted(self.snakes, key=lambda s: (-s.episode_best, -s.puntaje, -s.ranking_score()))
 
-    def standings_rule(self, s):
-        if s.puntaje >= ENEMY_COLLISION_THRESHOLD:
-            return "rivals"
-        if s.puntaje >= WALL_COLLISION_THRESHOLD:
-            return "walls"
-        if s.self_collision_enabled:
-            return "self"
-        return "warn" if s.self_collision_warning_active else "free"
+    STANDINGS_NAME = 22
+    STANDINGS_REFRESH_SEC = 5.0
 
-    def standings_lines(self, name_width):
-        """The table's header and rows, the same columns as the Kotlin arena's (kotlin arena.engine.Standings)."""
-        header = (f"{'#':>3} {'':<{name_width}} {'now':>5} {'ep':>5} {'len':>5} {'rule':<7} {'deaths':>7} "
-                  f"{'foods':>6} {'best':>5} {'rank':>7}")
+    @staticmethod
+    def short_name(name):
+        """A tactic's name without its provider ("Anthropic-Claude_Opus_5.5" is "Claude_Opus_5.5")."""
+        dash = name.find("-")
+        if dash > 0 and "_" not in name[:dash] and name[dash + 1:dash + 2].isalpha():
+            return name[dash + 1:]
+        return name
+
+    def standings_lines(self):
+        """The table's header and rows, the same as the Kotlin arena's pause screen (kotlin arena.engine.Standings):
+        place, name, score now, best in this episode, best ever, ranking score, deaths (* = died in this episode),
+        deaths by cause (own body, wall, rival, hunger), average score at death, foods in this game, ms per move."""
+        n = self.STANDINGS_NAME
+        header = (f"{'#':>3} {'':<{n}} {'now':>4} {'ep':>4} {'best':>4} {'rank':>6} {'†':>3} "
+                  f"{'body':>6} {'wall':>6} {'rival':>6} {'hunger':>6} {'avg':>6} {'foods':>6} {'ms':>6}")
         rows = []
         for i, s in enumerate(self.standings()):
-            deaths = sum(1 for life in s.lives if life["cause"] != "episode_reset")
-            fell = "*" if s.nombre in self.snakes_fallen_this_episode else " "
-            rows.append((s, f"{i + 1:>3} {s.nombre[:name_width]:<{name_width}} {s.puntaje:>5.0f} {s.episode_best:>5.0f} "
-                            f"{len(s.segmentos):>5} {self.standings_rule(s):<7} {f'{deaths}{fell}':>7} {s.foods_eaten:>6} "
-                            f"{s.best_score():>5.0f} {s.ranking_score():>7.1f}"))
+            ended = [life for life in s.lives if life["cause"] != "episode_reset"]
+            dead = {c: sum(1 for life in ended if life["cause"] == c) for c in ("self", "wall", "enemy", "starvation")}
+            avg = int(sum(life["score"] for life in ended) / len(ended)) if ended else 0
+            fell = "*" if s.nombre in self.snakes_fallen_this_episode else ""
+            ms = f"{s.dec_sum / s.dec_count:.3f}" if s.external_tactic and s.dec_count else "-"
+            rows.append((s, f"{i + 1:>3} {self.short_name(s.nombre)[:n]:<{n}} {s.puntaje:>4.0f} {s.episode_best:>4.0f} "
+                            f"{s.best_score():>4.0f} {s.ranking_score():>6.1f} {f'{len(ended)}{fell}':>3} "
+                            f"{dead['self']:>6} {dead['wall']:>6} {dead['enemy']:>6} {dead['starvation']:>6} "
+                            f"{avg:>6} {s.foods_eaten:>6} {ms:>6}"))
         return header, rows
+
+    def draw_pause_standings(self):
+        """Paused (P): the game dimmed and every snake's standings in detail, full screen."""
+        overlay = pygame.Surface((self.ANCHO, self.ALTO), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 220))
+        self.ventana.blit(overlay, (0, 0))
+        title = ("PAUSED (P: continue)  ep: best this episode; best, rank: all-time; deaths by cause; "
+                 "avg: score at death; ms per move")
+        draw_text(self.ventana, title, self.font_msg, WHITE, (self.ANCHO // 2, 30), center=True)
+        self.draw_standings(pygame.Rect(0, 70, self.ANCHO, self.ALTO - 110), 255, big=True)
 
     def table_font(self, size):
         fonts = self.__dict__.setdefault("_table_fonts", {})
@@ -2394,10 +2414,15 @@ class Game:
 
     def draw_standings(self, area, alpha, big=False):
         """Every snake's standings at the bottom of area, centred, small and over the game on a light dark panel (the
-        snakes keep the whole screen): up to 10 rows a column when there is width for more columns, the font shrinking
-        until they fit; beyond the smallest font the last rows are left out, and said so."""
-        name_width = min(34, max([4] + [len(s.nombre) for s in self.snakes]))
-        header, rows = self.standings_lines(name_width)
+        snakes keep the whole screen): across the width (at least 4 rows a column, 8 at the end of an episode), the font
+        shrinking until they fit; beyond the smallest font the last rows are left out, and said so. The rows are
+        refreshed every STANDINGS_REFRESH_SEC, not every frame."""
+        now = time.time()
+        cached = self.__dict__.get("_standings")
+        if big or cached is None or now - cached[0] >= self.STANDINGS_REFRESH_SEC:
+            cached = self._standings = (now,) + self.standings_lines()
+        header, rows = cached[1], cached[2]
+        min_rows = 8 if big else 4
         size = max(14, self.ALTO // 40) if big else max(11, self.ALTO // 110)
         while True:
             font = self.table_font(size)
@@ -2406,11 +2431,11 @@ class Game:
             col_w = font.size(header + "   ")[0]
             columns = max(1, area.width // col_w)
             if fits >= 1 and (len(rows) <= fits * columns or size <= 9):
-                used = min(columns, max(-(-len(rows) // 10), -(-len(rows) // fits)))
+                used = min(columns, max(-(-len(rows) // min_rows), -(-len(rows) // fits)))
                 per_column = min(fits, -(-len(rows) // used))
                 shown = min(len(rows), per_column * used)
                 x0 = area.x + (area.width - used * col_w) // 2
-                top = area.bottom - (per_column + 1) * line_h
+                top = area.y if big else area.bottom - (per_column + 1) * line_h
                 panel = pygame.Surface((used * col_w, (per_column + 1) * line_h + 6), pygame.SRCALPHA)
                 panel.fill((0, 0, 0, 0 if big else 140))
                 self.ventana.blit(panel, (x0 - 6, top - 3))
