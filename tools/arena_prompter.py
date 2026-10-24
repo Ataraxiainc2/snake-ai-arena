@@ -904,9 +904,9 @@ def player_problem(m):
     if m.get("in") != 0 or m.get("out") != 0:
         return "precio no confirmado en 0"
     if m.get("until") and m["until"] <= (dt.datetime.now() + dt.timedelta(hours=1)).strftime("%Y-%m-%d %H:%M"):
-        return f"gratis solo hasta {m['until']}"
+        return f"la gratuidad termina ya ({m['until']})"
     if m.get("ctx") and m["ctx"] < MIN_CONTEXT:
-        return f"contexto de {m['ctx']} tokens (< {MIN_CONTEXT})"
+        return f"contexto corto ({m['ctx']} tokens, mínimo {MIN_CONTEXT})"
     if m.get("src") == ["live"] and not CHAT_FAMILY.search(text):
         return "sin datos y el nombre no es de un modelo de chat"
     return None
@@ -1046,6 +1046,51 @@ def ask(question):
         return False
 
 
+def brief_http(status, err):
+    """One short reason for a failed request."""
+    e = (err or "").lower()
+    if status == 401:
+        return "error", "clave rechazada por el host"
+    if status == 402:
+        return "error", "el host pide saldo o llegó al límite de gasto (no se cobró)"
+    if status == 403 and "consent" in e:
+        return "error", "pide tu consentimiento en el panel del host"
+    if status == 403:
+        return "error", "sin permiso para este modelo"
+    if status in (404, 410):
+        return "error", "el host ya no tiene este modelo"
+    if status == 429:
+        return "error", "límite de pedidos: se salta el resto de este host"
+    if status is None and "timed out" in e:
+        return "error", f"más de {AUTO_SECONDS // 60} min sin respuesta"
+    if status is None:
+        return "error", "sin conexión con el host"
+    if status >= 500:
+        return "error", f"error del host ({status})"
+    return "error", f"HTTP {status}"
+
+
+def brief_check(line):
+    """One short reason from the arena check's PASS/FAIL line."""
+    msg = re.sub(r"^(PASS|FAIL)\s+\S+?:\s*", "", line or "")
+    m = re.search(r"compile error:\s*:?(\d+):\d+:\s*error:\s*(.*)", msg)
+    if m:
+        return f"no compila (línea {m.group(1)}): {m.group(2).strip()[:60]}"
+    m = re.search(r"DISQUALIFIED[^(]*\((.*)\)", msg) or re.search(r"cannot be loaded \((.*)\)", msg)
+    if m:
+        return ("auditoría: " if "DISQUALIFIED" in msg else "no carga: ") + m.group(1)[:60]
+    m = re.search(r"errors=(\d+), invalid=(\d+).*?FAIL\s*(.*)", msg)
+    if m:
+        return f"falla en la prueba ({m.group(1)} errores, {m.group(2)} inválidas): {m.group(3)[:50]}"
+    m = re.search(r"FAIL\s+(.*)$", msg)
+    return (m.group(1) if m else msg)[:80] or "no pasó el check"
+
+
+def kind_of(reason):
+    """The group a reason belongs to in the summary."""
+    return re.sub(r" ?\(.*|:.*", "", reason)
+
+
 def auto_main(argv):
     ap = argparse.ArgumentParser(prog="arena_prompter.py auto",
                                  description="Every free model writes its own Kotlin and Python tactic.")
@@ -1066,35 +1111,45 @@ def auto_main(argv):
     global ONLY_KEY_LABELS
     if args.host:
         ONLY_KEY_LABELS = {c for h in args.host for c in (KEY_LABELS.get(h), h, h.split("-")[0]) if c}
+    started = time.time()
+    print(f"Arena Prompter, modo automático{' (simulacro: no envía ni escribe)' if args.dry_run else ''} · "
+          f"{dt.datetime.now():%Y-%m-%d %H:%M}")
     # Prices and free periods change: a real run always reads the catalogs again; a dry run may use the cache.
-    print("Catálogo de modelos…" + ("" if args.dry_run and not args.refresh else " (descargado de nuevo: precios al día)"))
-    CATALOG.build(refresh=args.refresh or not args.dry_run, progress=lambda s: print("  ·", s))
+    fresh = args.refresh or not args.dry_run
+    print("Catálogo: " + ("descargando de nuevo (precios al día)…" if fresh else "desde la caché…"), end=" ")
+    CATALOG.build(refresh=fresh)
+    print(f"{len(CATALOG.providers)} hosts.")
     unknown = [h for h in args.host if h not in CATALOG.providers]
     if unknown:
         sys.exit(f"--host desconocido: {', '.join(unknown)}")
     excluded = []
     cands = free_candidates(args.trust_unreviewed, excluded, hosts=set(args.host) or None)
-    reasons = {}
-    for name, mid, host, why in excluded:
-        reasons.setdefault(why, []).append((name, mid, host))
-    print(f"\nNo participan {len(excluded)} ofertas gratuitas que no son modelos de chat: " +
-          ", ".join(f"{why} {len(v)}" for why, v in sorted(reasons.items(), key=lambda x: -len(x[1]))))
-    if args.show_excluded:
-        for why, items in sorted(reasons.items()):
-            print(f"  [{why}]")
-            for name, mid, host in sorted(set(items)):
-                print(f"    {mid} @ {host} ({name})")
     if args.only:
         cands = [c for c in cands if any(w.lower() in c["name"].lower() for w in args.only)]
     no_key = [c for c in cands if not c["hasKey"]]
     cands = [c for c in cands if c["hasKey"]]
     if args.limit:
         cands = cands[:args.limit]
-    print(f"\n{len(cands) + len(no_key)} modelos gratuitos; {len(no_key)} sin clave para su host (se omiten), "
-          f"{len(cands)} con clave.")
+    reasons = {}
+    for name, mid, host, why in excluded:
+        reasons.setdefault(kind_of(why), []).append((name, mid, host, why))
+    scope = f" en {', '.join(args.host)}" if args.host else ""
+    print(f"Modelos gratis de chat{scope}: {len(cands) + len(no_key)} · con clave: {len(cands)} · "
+          f"no participan: {len(excluded)}" + (" (" + ", ".join(f"{k} {len(v)}" for k, v in
+                                                sorted(reasons.items(), key=lambda x: -len(x[1]))) + ")"
+                                                if excluded else ""))
     if no_key:
-        hosts = sorted({c['provider'] for c in no_key})
-        print("  Sin clave en D:\\SC\\AK\\A: " + ", ".join(hosts[:30]) + (" …" if len(hosts) > 30 else ""))
+        hosts = sorted({c["provider"] for c in no_key})
+        print(f"Sin clave en D:\\SC\\AK\\A ({len(no_key)} modelos): " + ", ".join(hosts[:12]) +
+              (f" y {len(hosts) - 12} más" if len(hosts) > 12 else ""))
+    if args.show_excluded:
+        for kind, items in sorted(reasons.items()):
+            print(f"  [{kind}]")
+            for name, mid, host, why in sorted(set(items)):
+                print(f"    {mid} @ {host}" + (f"  ({why})" if why != kind else ""))
+    missing = [LANGS[lg]["telemetry"].name for lg in langs if standings(lg) is None]
+    if missing:
+        print(f"Aviso: falta {' y '.join(missing)}: los prompts van sin el top 3 (juega una partida antes).")
 
     # Plan: what each model will write; files that already have code are decided now, before anything is sent.
     plan = []
@@ -1106,39 +1161,63 @@ def auto_main(argv):
                 continue
             if have and not args.dry_run:
                 f = file_of(c["name"], lang)
-                if not ask(f"\nADVERTENCIA: {f.name} ya tiene código ({have} caracteres). ¿Reescribirlo con "
-                           f"{c['model']} vía {c['host']}? [s/N] "):
+                if not ask(f"¿Reescribir {f.name} ({have} car.) con {c['model']} @ {c['host']}? [s/N] "):
                     continue
             todo.append((lang, have))
         if todo:
             plan.append((c, todo))
-    for lang in langs:
-        if standings(lang) is None:
-            print(f"\nAVISO: no hay {LANGS[lang]['telemetry'].name}: los prompts de {lang} irán sin el top 3 ni tu "
-                  "puesto (una partida primero los mejora).")
-    print(f"\nPlan: {len(plan)} modelos, {sum(len(t) for _, t in plan)} archivos.")
-    for c, todo in plan:
-        rewrite = " (tiene código: preguntará)" if args.dry_run else " (reescribe {} car.)"
-        files = ", ".join(f"{c['name']}{LANGS[lg]['ext']}" + (rewrite.format(have) if have else
-                          (" (vacío)" if file_of(c['name'], lg).exists() else " (nuevo)")) for lg, have in todo)
-        extra = f"; hasta {c['until']}" if c["until"] else ""
-        extra += f"; mismo modelo que {', '.join(c['aliases'])}" if c.get("aliases") else ""
-        print(f"  {c['model']} @ {c['host']}{extra}{'; ' + c['note'] if c['note'] else ''} -> {files}")
-    if args.dry_run or not plan:
+    files = [(c, lg, have) for c, todo in plan for lg, have in todo]
+    news = sum(1 for c, lg, have in files if not have and not file_of(c["name"], lg).exists())
+    rewrites = sum(1 for _, _, have in files if have)
+    print(f"Plan: {len(plan)} modelos, {len(files)} archivos ({news} nuevos, {len(files) - news - rewrites} "
+          f"plantillas vacías, {rewrites} reescrituras).")
+    if args.dry_run:
+        width = max((len(c["name"]) for c, _ in plan), default=10)
+        for c, todo in plan:
+            what = " · ".join(f"{LANGS[lg]['ext'][1:]} " + ("reescribe" if have else ("plantilla" if
+                              file_of(c["name"], lg).exists() else "nuevo")) for lg, have in todo)
+            until = f"  gratis hasta {c['until'][:10]}" if c["until"] else ""
+            print(f"  {c['name']:<{width}}  {what:<22} {c['model']} @ {c['host']}{until}")
+        return
+    if not plan:
         return
 
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     run_dir = RUNS / stamp
     run_dir.mkdir(parents=True, exist_ok=True)
     results, limited = [], set()
+    print()
     try:
         run_plan(plan, run_dir, results, limited)
     except KeyboardInterrupt:
-        print("\nDetenido con Ctrl+C: lo escrito hasta ahora queda; nada a medias.")
-    count = {}
+        print("\nDetenido con Ctrl+C: lo escrito queda completo; nada quedó a medias.")
+    summary = summarize(results, time.time() - started, run_dir)
+    (run_dir / "resumen.txt").write_text(summary + "\n", encoding="utf-8")
+    print("\n" + summary)
+
+
+def summarize(results, seconds, run_dir):
+    """The end of a run in a few lines: what was written, why the rest was not."""
+    by = {}
     for r in results:
-        count[r["status"]] = count.get(r["status"], 0) + 1
-    print(f"\nResumen: {count}. Respuestas y detalle en {run_dir}")
+        by.setdefault(r["status"], []).append(r)
+    plural = {"escrito": "escritos", "rechazado": "rechazados", "error": "errores", "omitido": "omitidos"}
+    head = " · ".join(f"{len(by[s])} {plural[s]}" for s in plural if by.get(s))
+    lines = [f"Resultado: {head or 'nada'}  ({seconds / 60:.0f} min)"]
+    if by.get("escrito"):
+        lines.append("Escritos: " + ", ".join(f"{r['name']}{LANGS[r['lang']]['ext']}" for r in by["escrito"]))
+    for status, label in (("rechazado", "Rechazados"), ("error", "Errores"), ("omitido", "Omitidos")):
+        groups = {}
+        for r in by.get(status, []):
+            groups.setdefault(kind_of(r["brief"]), []).append(r)
+        if groups:
+            lines.append(f"{label}: " + " · ".join(f"{k} {len(v)}" for k, v in
+                                                    sorted(groups.items(), key=lambda x: -len(x[1]))))
+    if any(r["brief"].startswith("pide tu consentimiento") for r in results):
+        hosts = sorted({r["provider"] for r in results if r["brief"].startswith("pide tu consentimiento")})
+        lines.append("Para que entren: aprueba esos proveedores en el panel de " + ", ".join(hosts) + ".")
+    lines.append(f"Detalle y respuestas completas: {run_dir}")
+    return "\n".join(lines)
 
 
 def unhide_in_git(paths):
@@ -1146,7 +1225,8 @@ def unhide_in_git(paths):
     exclude = ARENA / ".git" / "info" / "exclude"
     if not exclude.exists():
         return []
-    rel = {p.resolve().relative_to(ARENA.resolve()).as_posix() for p in paths}
+    root = ARENA.resolve()
+    rel = {p.resolve().relative_to(root).as_posix() for p in paths if p.resolve().is_relative_to(root)}
     lines = exclude.read_text(encoding="utf-8").splitlines()
     keep = [ln for ln in lines if ln.strip() not in rel]
     if len(keep) != len(lines):
@@ -1161,25 +1241,32 @@ def save_results(run_dir, results):
 
 
 def run_plan(plan, run_dir, results, limited):
-    def add(rec):  # results.json is current after every file, also when the run is stopped
+    total = sum(len(todo) for _, todo in plan)
+    width = max(len(c["name"]) + 3 for c, _ in plan)
+    n = 0
+
+    def add(rec, status, brief, extra=""):  # one short line per file; results.json is current after every file
+        rec.update(status=status, brief=brief)
+        mark = {"escrito": "✓", "rechazado": "✗", "error": "!", "omitido": "–"}[status]
+        secs = f"  {rec['seconds']:.0f} s" if rec.get("seconds") else ""
+        print(f"[{n:>{len(str(total))}}/{total}] {rec['file']:<{width}} {mark} {brief}{extra}{secs}")
         results.append(rec)
         save_results(run_dir, results)
 
-    for i, (c, todo) in enumerate(plan, 1):
+    for c, todo in plan:
         prov = CATALOG.providers[c["provider"]]
         key, _ = key_for(prov["id"], prov)
         for lang, had in todo:
+            n += 1
             target = file_of(c["name"], lang)
-            rec = {"name": c["name"], "lang": lang, "provider": c["provider"], "model": c["model"]}
+            rec = {"name": c["name"], "lang": lang, "file": target.name, "provider": c["provider"],
+                   "model": c["model"]}
             if c["provider"] in limited:
-                rec.update(status="omitido", detail="el host limitó los pedidos en esta corrida")
-                add(rec)
+                add(rec, "omitido", "límite de pedidos de este host")
                 continue
             if c["model"] in limited:
-                rec.update(status="omitido", detail="el modelo pide tu consentimiento en el panel del host")
-                add(rec)
+                add(rec, "omitido", "pide tu consentimiento en el panel del host")
                 continue
-            print(f"[{i}/{len(plan)}] {target.name} <- {c['model']} @ {c['host']} …", end=" ")
             prompt, _ = build_prompt(c["name"], lang=lang)
             t0 = time.time()
             try:
@@ -1189,48 +1276,45 @@ def run_plan(plan, run_dir, results, limited):
             rec["seconds"] = round(time.time() - t0, 1)
             if not out.get("ok"):
                 err = out.get("error", "")
+                rec["detail"] = f"HTTP {out.get('status')}: {err[:400]}"
+                status, brief = brief_http(out.get("status"), err)
                 if out.get("status") == 429:
                     limited.add(c["provider"])
-                if out.get("status") == 403 and "consent" in err.lower():
+                if brief.startswith("pide tu consentimiento"):
                     limited.add(c["model"])  # approve the provider in the host's dashboard, then run again
-                    err = "el host pide tu consentimiento para este proveedor (apruébalo en su panel). " + err
-                rec.update(status="error", detail=f"HTTP {out.get('status')}: {err[:300]}")
-                print(rec["detail"][:120])
-                add(rec)
+                add(rec, status, brief)
                 continue
             rec.update(finish=out.get("finish"), usage=out.get("usage"))
             code = extract_code(out["text"], lang)
-            (run_dir / f"{c['name']}{LANGS[lang]['ext']}.answer.txt").write_text(out["text"], encoding="utf-8")
+            (run_dir / f"{target.name}.answer.txt").write_text(out["text"], encoding="utf-8")
             notes = check_code(code) if lang == "kotlin" else check_code_py(code)
-            if notes and not out["text"].strip():
-                notes = [f"respuesta vacía (fin: {out.get('finish')}, {out.get('reasoningChars', 0)} caracteres de "
-                         f"razonamiento, {(out.get('usage') or {}).get('out')} tokens de salida)"]
-            elif notes and out.get("finish") == "length":
-                notes.append("la respuesta se cortó por largo (finish=length)")
             if notes:
-                rec.update(status="rechazado", detail="; ".join(notes))
-                print("RECHAZADO:", rec["detail"])
-                add(rec)
+                if not out["text"].strip():
+                    brief = "respuesta vacía" + (" (solo razonamiento)" if out.get("reasoningChars") else "")
+                elif out.get("finish") == "length":
+                    brief = "respuesta cortada por largo"
+                elif not code:
+                    brief = "sin código en la respuesta"
+                else:
+                    brief = "código incompleto: " + notes[0]
+                rec["detail"] = "; ".join(notes)
+                add(rec, "rechazado", brief)
                 continue
             good, line = arena_check(c["name"], lang, code, run_dir / "stage")
-            rec["check"] = line
+            rec["detail"] = line
             if not good:
-                rec.update(status="rechazado", detail=line)
-                print("NO PASA el check:", line[:160])
-                add(rec)
+                add(rec, "rechazado", brief_check(line))
                 continue
             if chars_of(c["name"], lang) != had:  # someone changed it while the model was answering
-                rec.update(status="omitido", detail="el archivo cambió durante la corrida; no se tocó")
-                print(rec["detail"])
-                add(rec)
+                add(rec, "omitido", "el archivo cambió durante la corrida; no se tocó")
                 continue
             tmp = target.with_name(target.name + ".tmp")
             tmp.write_text(code.rstrip() + "\n", encoding="utf-8", newline="\n")
             tmp.replace(target)
             unhide_in_git([target])
-            rec.update(status="escrito", chars=len(code.rstrip()) + 1)
-            print(f"ESCRITO ({rec['chars']} car.) {line[:90]}")
-            add(rec)
+            rec["chars"] = len(code.rstrip()) + 1
+            med = re.search(r"median=([\d.]+) ms", line)
+            add(rec, "escrito", f"escrito, {rec['chars']} car." + (f", {med.group(1)} ms por jugada" if med else ""))
 
 
 # ---------------------------------------------------------------------------------------------------------------
