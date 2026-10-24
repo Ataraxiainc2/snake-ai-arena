@@ -17,7 +17,7 @@ if(v>298)for(e in p.enemies){for(c in e.body)o[c]=g;if(!t)for(d in 0..3)o[nx(e.b
 val tw=p.turnsWithoutFood;val hu=tw>800;var tg=tl;var bk=1 shl 30
 for(i in p.foods.indices){val f=p.foods[i];val d=ds(hd,f);val e=p.foodRivalDistance(i)
 val k=if(hu)d else d+(if(v>298&&e<=d)800000 else if(e<d)8+2*(d-e)else if(e==d)2 else 0);if(k<bk){bk=k;tg=f}}
-val cp=if(tw>1350)1 else if(hu)b.size/2+2 else b.size*3/2+(if(v>298)140 else 100)
+val cp=if(tw>p.starvationTurns-150)1 else if(hu)b.size/2+2 else b.size*2+(if(v>298)260 else 200)
 var r0=-1;var s0=0;var bm=p.validMoves[0]
 for(m in p.validMoves){if(r0>=0&&p.nanosLeft()<=0)break
 val c=nx(hd,m);val f=c in p.foods;gr=g0+(if(f)1 else 0);val r=rm(b,c,cp,p.newMark())

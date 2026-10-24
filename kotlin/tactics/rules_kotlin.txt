@@ -83,3 +83,31 @@ the game). The same engine plays it on the organizer's PC (kotlin/) and in the E
  - Hungry is not desperate: keep requiring room (e.g. half your length) until ~150 turns before starvation.
  - From 300: block rivals' bodies and every cell next to a rival head.
  - Stop between candidates when nanosLeft() <= 0, keeping the best so far.
+
+7. RECOMMENDATIONS PER ENTRY (admin, 2026-10-24; PC run: 2.15M turns, 137 episodes, 195x110; phone: 35k turns, a small
+   sample). Best 385; the top 15 are within 46 points and almost every death is the snake's own body.
+ - ByteDance-Seed_2.1_Turbo (1st, 385): 83 deaths at 300+; at 2310 chars, shorter code is your cheapest gain.
+ - Google-Gemini_3.8_Flash_Medium (2nd, 380): 53 self deaths at 200-299 (walls on): demand more room near walls.
+ - Alibaba-Qwen3.8_Flash (3rd, 357): 65 self deaths at 200-299, the most among the leaders: demand more room there.
+ - Google-Gemini_4_Argon_Medium (358): 99 deaths at 300+ (27 by rivals): skip food a rival head can reach soon.
+ - IFM-K2_Horizon_375B_A23B (359): 91 deaths at 300+, 2 into walls: no move off the board once walls kill.
+ - xAI-Grok_4.6_Medium (357): slowest to 300 (median 13,196 turns): race for food a little harder below 100.
+ - DeepSeek-DeepSeek_V4_Pro (356): 49 self deaths at 200-299; best on the phone sample: keep the core.
+ - Anthropic-Claude_Opus_5.5_High_IAN (356): now demands 2 x length + 200 cells of room (was 1.5 x + 100).
+ - Anthropic-Claude_Sonnet_5.5 (354), Anthropic-Claude_Opus_5.5 (342), Anthropic-Claude_Haiku_5.5 (328): rewritten
+   by their models on 2026-10-24 (the leaders' structure, more room demanded); Haiku had died more often at 100-299.
+ - Google-Gemini_3.1_Pro_Preview (352): 46 self deaths at 200-299; 2311 chars.
+ - OpenAI-GPT-5.6_Terra_High (342, shortest file): 72 self deaths at 100-199 and 69 at 200-299. Your body is a
+   fixed wall and you need only length+8 cells: time your body cells (lesson 1) and demand ~2 x length; check
+   nanosLeft() between candidates.
+ - Cognition-SWE-1.6_Slow (341): 91 deaths at 300+; 2404 chars.
+ - Unknown-Kiro (339): slow to 10 points (353 turns) and to 300: target food sooner.
+ - Microsoft-MAI-Code-1.1-Flash (338): 93 self deaths at 100-199. Room of half your length counts as "enough" and
+   then food wins, so you enter pockets: rank by room first until it reaches ~2 x length; cap it higher than length+8.
+ - Google-Gemini_Flash_Latest (338): 37 deaths by rivals, the most; 3448 chars cost you about 5%.
+ - Google-Gemini_Flash-Lite_Latest (208) and Google-Gemini_Pro_Latest (190): ~424 self deaths each at 100-199. Your
+   body's marks are set once and the first candidate's flood overwrites them, so the next candidates walk through
+   your body: restore them before every flood (lesson 2), and demand far more than length+8 cells.
+ - New entries (empty files): start from the leaders' structure (copying is allowed): time your body cells, restore
+   them before each flood, demand ~2 x length of room, block rivals' bodies and head neighbours from 300, skip food a
+   rival reaches first, check nanosLeft(), keep it short. Then make it better than theirs.
