@@ -31,7 +31,7 @@ override fun decide(p:Perception):Int{
   val c=nx(hd,m);val f=c>=0&&c in p.foods;gr=g0+(if(f)1 else 0)
   val r=if(c<0)0 else rm(p,b,c,cp,p.newMark())
   val a0=if(sv)if(r>0)1 else 0 else if(hu)if(2*r>=ln)1 else 0 else r
-  val a1=if(hu||!f)0 else 1
+  val a1=if(f)1 else 0
   val a2=-ds(c,tg);val a3=if(hu)0 else-ds(c,tl);val a4=if(m==md)0 else 1
   if(a0>k0||a0==k0&&(a1>k1||a1==k1&&(a2>k2||a2==k2&&(a3>k3||a3==k3&&a4<k4)))){be=m;k0=a0;k1=a1;k2=a2;k3=a3;k4=a4}}
  if(k0<1)for(m in p.validMoves){val c=nx(hd,m);if(c>=0&&p.bodies[c].toInt()==0)return m}

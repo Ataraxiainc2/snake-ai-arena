@@ -23,14 +23,24 @@ class Tactic:SnakeTactic{
    val f=p.foods[i];val d=ds(hd,f);val e=p.foodRivalDistance(i)
    val k=d+(if(e<d)8+2*(d-e)else 0)+(if(e==d)2 else 0);if(k<bk){bk=k;tg=f}
   }
-  val cap=b.size*3/2+120;val tw=p.turnsWithoutFood;val hu=tw>800;val sv=tw>p.starvationTurns-150;val md=p.myDirection
-  var best=p.validMoves[0];var k0=-1;var k1=0;var k2=0;var k3=0;var k4=2
+  val wl=v in 200..299
+  val cap=if(wl)b.size*2+180 else b.size*3/2+120
+  val tw=p.turnsWithoutFood;val hu=tw>800;val sv=tw>p.starvationTurns-150;val md=p.myDirection
+  val req=if(wl)ln else ln/2
+  var best=p.validMoves[0];var k0=-1;var k1=0;var k2=Int.MIN_VALUE;var k3=Int.MIN_VALUE;var k4=Int.MIN_VALUE;var k5=2
   for(m in p.validMoves){
    if(k0>=0&&p.nanosLeft()<=0)break
    val c=nx(hd,m);val f=c in p.foods;gr=g0+(if(f)1 else 0);val r=rm(c,cap,p.newMark())
-   val a0=if(hu)(if(sv)(if(r>0)1 else 0)else(if(2*r>=ln)1 else 0))else r
-   val a1=if(hu||!f)0 else 1;val a2=-ds(c,tg);val a3=if(hu)0 else-ds(c,tl);val a4=if(m==md)0 else 1
-   if(a0>k0||a0==k0&&(a1>k1||a1==k1&&(a2>k2||a2==k2&&(a3>k3||a3==k3&&a4<k4)))){best=m;k0=a0;k1=a1;k2=a2;k3=a3;k4=a4}
+   val x=c%w;val y=c/w;val wx=min(x,w-1-x);val wy=min(y,h-1-y);val bw=min(wx,wy)*4+min(wx+wy,30)
+   val a0=if(hu)(if(sv)(if(r>0)1 else 0)else(if(r>=req)1 else 0))else r
+   val a1=if(hu||!f)0 else 1
+   val a2=-ds(c,tg)*3+(if(wl)min(bw,12)else 0)
+   val a3=if(wl)bw else(if(hu)0 else-ds(c,tl))
+   val a4=if(wl)(if(hu)0 else-ds(c,tl))else 0
+   val a5=if(m==md)0 else 1
+   if(a0>k0||a0==k0&&(a1>k1||a1==k1&&(a2>k2||a2==k2&&(a3>k3||a3==k3&&(a4>k4||a4==k4&&a5<k5))))){
+    best=m;k0=a0;k1=a1;k2=a2;k3=a3;k4=a4;k5=a5
+   }
   }
   return best
  }

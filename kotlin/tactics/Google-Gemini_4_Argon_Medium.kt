@@ -1,7 +1,7 @@
 import kotlin.math.*
 class Tactic:SnakeTactic{
 var o=IntArray(0);var q=o;var g=0;var w=0;var h=0;var t=true;var hd=0;var bs=0;var ln=0;var gr=0
-fun nx(c:Int,d:Int):Int{val x=c%w+Move.DX[d];val y=c/w+Move.DY[d];return if(t)(y+h)%h*w+(x+w)%w else if(x in 0 until w&&y in 0 until h)y*w+x else hd}
+fun nx(c:Int,d:Int):Int{val x=c%w+Move.DX[d];val y=c/w+Move.DY[d];return if(t)(y+h)%h*w+(x+w)%w else if(x in 0 until w&&y in 0 until h)y*w+x else c}
 fun ds(a:Int,c:Int):Int{val i=abs(a%w-c%w);val j=abs(a/w-c/w);return if(t)min(i,w-i)+min(j,h-j)else i+j}
 fun ok(c:Int,d:Int):Boolean{val m=o[c];return m!=g&&(m<=bs||m>bs+ln||d>=ln+bs+1-m+gr)}
 fun rm(b:IntArray,c:Int,cp:Int,s:Int):Int{for(i in 0 until ln)if(o[b[i]]!=g)o[b[i]]=bs+1+i;o[hd]=g;if(!ok(c,1))return 0
@@ -14,14 +14,14 @@ val b=p.myBody;hd=b[0];val tl=b[b.size-1];bs=p.newMark();ln=0;val g0=if(p.previo
 if(v>98){ln=b.size;repeat(ln){p.newMark()}}
 if(p.newMark()<bs)return decide(p)
 val el=v>298||p.enemyCollision
-if(el)for(e in p.enemies){for(c in e.body)o[c]=g;for(d in 0..3)o[nx(e.body[0],d)]=g}
-val tw=p.turnsWithoutFood;val hu=tw>700;var tg=tl;var bk=1 shl 30
-for(i in p.foods.indices){val f=p.foods[i];val d=ds(hd,f);val e=p.foodRivalDistance(i)
-val k=if(hu)d else d+(if(el&&e<8)800000 else if(e<d)8+2*(d-e)else if(e==d)2 else 0);if(k<bk){bk=k;tg=f}}
-val cp=if(tw>1350)1 else if(hu)b.size/2+2 else b.size*3/2+(if(el)150 else 120)
+if(el)for(e in p.enemies){for(c in e.body)o[c]=g;val z=e.body[0];for(d in 0..3){val x=nx(z,d);o[x]=g;if(ds(hd,z)>1)for(k in 0..3)o[nx(x,k)]=g}}
+val tw=p.turnsWithoutFood;val hu=tw>800;var tg=tl;var bk=1 shl 30
+for(i in p.foods.indices){val e=p.foodRivalDistance(i);if(el&&e<8)continue;val f=p.foods[i];val d=ds(hd,f)
+val k=if(hu)d else d+(if(e<d)8+2*(d-e)else if(e==d)2 else 0);if(k<bk){bk=k;tg=f}}
+val cp=if(tw>1350)1 else if(hu)b.size/2+2 else b.size*2+(if(el)200 else 150)
 var r0=-1;var s0=Int.MIN_VALUE;var bm=p.validMoves[0]
 for(m in p.validMoves){if(r0>=0&&p.nanosLeft()<=0)break
-val c=nx(hd,m);val f=c in p.foods;gr=g0+(if(f)1 else 0);val r=rm(b,c,cp,p.newMark())
-val s=(if(!hu&&f)1 shl 20 else 0)-(ds(c,tg)shl 10)-(if(hu)0 else ds(c,tl)shl 1)+(if(m==p.myDirection)1 else 0)-(if(r<1)p.bodies[c]*4000000 else 0)
+val c=nx(hd,m);if(c==hd)continue;val fi=p.foods.indexOf(c);val f=fi>=0;gr=g0+(if(f)1 else 0);val r=rm(b,c,cp,p.newMark())
+val s=(if(!hu&&f&&(!el||p.foodRivalDistance(fi)>7))1 shl 21 else 0)-(ds(c,tg)shl 11)-(if(hu)0 else ds(c,tl)shl 1)+(if(m==p.myDirection)1 else 0)-(if(r<1)p.bodies[c]*4000000 else 0)
 if(r>r0||r==r0&&s>s0){r0=r;s0=s;bm=m}}
 return bm}}

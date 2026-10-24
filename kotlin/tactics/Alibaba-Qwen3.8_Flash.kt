@@ -16,7 +16,7 @@ if(el)for(e in p.enemies){val z=e.body[0];for(k in 0..3)mk[nx(z,k)]=g}
 var tg=tl;var bk=Int.MAX_VALUE
 for(i in p.foods.indices){val f=p.foods[i];val d=ds(hd,f);val r=p.foodRivalDistance(i);val k=d+(if(el&&r<8)800000 else if(r<d)8+2*(d-r)else 0)
 if(k<bk){bk=k;tg=f}}
-val Y=b.size+108+(if(el)200 else 0);val hu=p.turnsWithoutFood>800;val md=p.myDirection
+val Y=b.size*(if(t)1 else if(el)3 else 2)+108;val hu=p.turnsWithoutFood>800;val md=p.myDirection
 var be=p.validMoves[0];var k0=-1;var k1=0;var k2=0;var k3=0;var k4=2
 for(m in p.validMoves){val c=nx(hd,m);val r=rm(p,c,c in p.foods,Y)
 val a0=if(hu)if(r>Y/2)1 else 0 else r;val a1=if(c in p.foods)1 else 0;val a2=-ds(c,tg);val a3=if(hu)0 else-ds(c,tl);val a4=if(m==md)0 else 1

@@ -23,7 +23,7 @@ class Tactic:SnakeTactic{
   val b=p.myBody;hd=b[0];val v=p.myScore;val tl=b[b.size-1]
   bs=p.newMark();ln=0;val g0=if(p.previousReward==15f)1 else 0
   if(v>98){ln=b.size;for(i in b.indices){mk[b[i]]=bs+1+i;p.newMark()}}
-  if(v>298)for(e in p.enemies){for(c in e.body)mk[c]=g;if(!t)for(d in 0..3)mk[nx(e.body[0],d)]=g}
+  if(v>298)for(e in p.enemies){for(c in e.body)mk[c]=g;for(d in 0..3)mk[nx(e.body[0],d)]=g}
   mk[hd]=g
   var tg=tl;var bk=Int.MAX_VALUE
   for(i in p.foods.indices){val f=p.foods[i];val d=ds(hd,f);val e=p.foodRivalDistance(i);val k=d+(if(e<d)8+2*(d-e)else 0)+(if(e==d)2 else 0);if(k<bk){bk=k;tg=f}}
@@ -32,7 +32,7 @@ class Tactic:SnakeTactic{
   for(m in p.validMoves){if(k0>=0&&p.nanosLeft()<=0)break
    val c=nx(hd,m);val f=c in p.foods;gr=g0+(if(f)1 else 0);val r=room(b,c,cap,mk,q,p.newMark(),g)
    if(r>0)foundAny=true
-   val minSpace=if(starving)1 else b.size/2
+   val minSpace=if(starving)1 else b.size
    val a0=if(hungry)(if(r>=minSpace)1 else 0)else r;val a1=if(hungry||!f)0 else 1;val a2=-ds(c,tg);val a3=if(hungry)0 else -ds(c,tl);val a4=if(m==md)0 else 1
    if(a0>k0||a0==k0&&(a1>k1||a1==k1&&(a2>k2||a2==k2&&(a3>k3||a3==k3&&a4<k4)))){best=m;k0=a0;k1=a1;k2=a2;k3=a3;k4=a4}}
   if(!foundAny){for(m in p.validMoves){val c=nx(hd,m);if(mk[c]!=g)return m}}

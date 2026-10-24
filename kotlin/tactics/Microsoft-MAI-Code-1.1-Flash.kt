@@ -33,14 +33,15 @@ override fun decide(p:Perception):Int{
   if(cost<bestCost){bestCost=cost;target=f}
  }
  val moves=p.validMoves;var best=moves[0];var bestVal=Long.MIN_VALUE
- val cap=minOf(b.size+8,if(p.nanosLeft()<300000L)32 else if(p.nanosLeft()<1000000L)96 else 400)
+ val cap=minOf(w*h,b.size*2+200,if(p.nanosLeft()<300000L)48 else if(p.nanosLeft()<1000000L)160 else w*h)
  val grow=if(p.previousReward>10f)1 else 0
+ val want=minOf(b.size*2,cap)
  for(m in moves){
   if(bestVal!=Long.MIN_VALUE&&p.nanosLeft()<=0)break
   val c=nx(hd,m);if(c<0||ms[c]==block)continue
   val f=food(p,c);val r=room(p,c,cap,g,block,grow+(if(f)1 else 0));if(r<0)continue
-  val enough=r>=if(urgent)1 else maxOf(2,b.size/2)
-  val v=(if(enough)1000000000000L else 0L)+(if(f)100000000L else 0L)+r*100L-ds(c,target)*1000L-ds(c,tl)*2+(if(m==p.myDirection)1 else 0)
+  val enough=r>=if(urgent)1 else want
+  val v=(minOf(r,want).toLong()*1000000000000L)+(if(enough)100000000000L else 0L)+(if(f)100000000L else 0L)-ds(c,target)*1000L-ds(c,tl)*2+(if(m==p.myDirection)1 else 0)
   if(v>bestVal){bestVal=v;best=m}
  }
  return best
