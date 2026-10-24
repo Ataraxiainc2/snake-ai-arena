@@ -2,6 +2,13 @@
 
     python tools/arena_prompter.py            # opens http://127.0.0.1:8765 in the browser
     python tools/arena_prompter.py --port 9000 --no-browser
+    python tools/arena_prompter.py auto --dry-run   # what every free model would write (sends nothing)
+    python tools/arena_prompter.py auto             # every free model with a key writes its .kt and .py
+
+Automatic mode: one offer per tactic name among the free models (a key for its host first, then the lab's own host,
+a host EmuGaMind reviewed, no daily quota); files with code are asked about before anything is sent; each answer
+gets 4 minutes (the arena's rule), the arena's own check on a staged copy (Kotlin: `check`; Python:
+`SNAKES.py --check`) and is written only if it passes. Answers and results go to the cache folder, never the arena.
 
 What it does:
  - Model catalog, as EmuGaMind builds it (models.dev: providers whose API the app can speak, majors pinned to their
@@ -647,25 +654,36 @@ def redact(text, key):
 # ---------------------------------------------------------------------------------------------------------------
 # Prompt
 # ---------------------------------------------------------------------------------------------------------------
-def standings():
+# The two arenas: the same names, ranking rows and prompt; their own folder, rules, telemetry and code fence.
+LANGS = {
+    "kotlin": {"dir": TACTICS, "ext": ".kt", "rules": RULES, "rules_label": "kotlin/tactics/rules_kotlin.txt",
+               "telemetry": TELEMETRY, "fence": "kotlin", "arena": "Kotlin Snake arena"},
+    "python": {"dir": ARENA / "tacticas", "ext": ".py", "rules": ARENA / "tacticas" / "rules.txt",
+               "rules_label": "tacticas/rules.txt", "telemetry": ARENA / "telemetry.json", "fence": "python",
+               "arena": "Python Snake arena (SNAKES.py)"},
+}
+
+
+def standings(lang="kotlin"):
     try:
-        t = json.loads(TELEMETRY.read_text(encoding="utf-8"))
+        t = json.loads(LANGS[lang]["telemetry"].read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return t
 
 
-def tactic_code(name):
-    f = TACTICS / f"{name}.kt"
+def tactic_code(name, lang="kotlin"):
+    f = LANGS[lang]["dir"] / f"{name}{LANGS[lang]['ext']}"
     try:
         return f.read_text(encoding="utf-8").strip()
     except OSError:
         return ""
 
 
-def build_prompt(name, top_n=3, include_own=True):
-    t = standings()
-    rules = RULES.read_text(encoding="utf-8").strip() if RULES.exists() else "(rules_kotlin.txt not found)"
+def build_prompt(name, top_n=3, include_own=True, lang="kotlin"):
+    L = LANGS[lang]
+    t = standings(lang)
+    rules = L["rules"].read_text(encoding="utf-8").strip() if L["rules"].exists() else f"({L['rules_label']} not found)"
     rows = [r for r in (t or {}).get("ranking", []) if len(r) >= 7 and r[6] == "llm"]
     llm = (t or {}).get("llm", {})
     total = len(rows)
@@ -673,13 +691,14 @@ def build_prompt(name, top_n=3, include_own=True):
     def row_line(r):
         return f"rank {r[0]} of {total}, rank score {r[2]}, best {r[3]}, {r[4]} chars"
 
-    parts = [f"Kotlin Snake arena. You compete as: {name}",
+    ext, fence = L["ext"], L["fence"]
+    parts = [f"{L['arena']}. You compete as: {name}",
              "You cannot read files or run anything; everything you need is below.", "",
-             "=== RULES (kotlin/tactics/rules_kotlin.txt) ===", rules, ""]
-    own = tactic_code(name) if include_own else ""
+             f"=== RULES ({L['rules_label']}) ===", rules, ""]
+    own = tactic_code(name, lang) if include_own else ""
     mine = next((r for r in rows if r[1] == name), None)
     if own:
-        head = f"=== YOUR CURRENT CODE: {name}.kt"
+        head = f"=== YOUR CURRENT CODE: {name}{ext}"
         if mine:
             head += f" ({row_line(mine)})"
             e = llm.get(name) or {}
@@ -687,32 +706,36 @@ def build_prompt(name, top_n=3, include_own=True):
                 head += "; deaths " + ", ".join(f"{k} {v}" for k, v in e["deaths"].items())
             if e.get("death_score_phase"):
                 head += "; by score " + ", ".join(f"{k}: {v}" for k, v in sorted(e["death_score_phase"].items()))
-        parts += [head + " ===", "```kotlin", own, "```", ""]
+        parts += [head + " ===", f"```{fence}", own, "```", ""]
     else:
         parts += ["=== YOUR CURRENT CODE: none yet (this is your first entry) ===", ""]
-    leaders = [r for r in rows if r[1] != name and tactic_code(r[1])][:top_n]
+    leaders = [r for r in rows if r[1] != name and tactic_code(r[1], lang)][:top_n]
     if leaders:
         when = (t or {}).get("updated", "")
         parts.append(f"=== TOP {len(leaders)} NOW (PC arena, {when}) ===")
         for r in leaders:
-            parts += [f"#{r[0]} {r[1]} ({row_line(r)})", "```kotlin", tactic_code(r[1]), "```", ""]
+            parts += [f"#{r[0]} {r[1]} ({row_line(r)})", f"```{fence}", tactic_code(r[1], lang), "```", ""]
     parts += ["=== YOUR TASK ===",
-              f"Write your best {name}.kt. Copying from the leaders is allowed, but a copy only ties them: the goal "
+              f"Write your best {name}{ext}. Copying from the leaders is allowed, but a copy only ties them: the goal "
               "is to beat them (a higher best score, fewer deaths, shorter code), not to tie.",
-              "Reply with ONLY the complete Kotlin file in one ```kotlin block, with no text before or after it."]
+              f"Reply with ONLY the complete {fence.capitalize()} file in one ```{fence} block, with no text before or "
+              "after it."]
     return "\n".join(parts), {"leaders": [r[1] for r in leaders], "mine": mine, "hasCode": bool(own),
                               "updated": (t or {}).get("updated")}
 
 
-KOTLIN_BLOCK = re.compile(r"```[ \t]*(kotlin|kt)?[^\n]*\n(.*?)```", re.S | re.I)
+CODE_BLOCK = {"kotlin": re.compile(r"```[ \t]*(kotlin|kt)?[^\n]*\n(.*?)```", re.S | re.I),
+              "python": re.compile(r"```[ \t]*(python|py)?[^\n]*\n(.*?)```", re.S | re.I)}
+CODE_MARK = {"kotlin": "class Tactic", "python": "def create_agent"}
 
 
-def extract_code(text):
-    blocks = [(lang, body.strip()) for lang, body in KOTLIN_BLOCK.findall(text or "")]
-    good = [b for lang, b in blocks if "class Tactic" in b] or [b for lang, b in blocks if lang]
+def extract_code(text, lang="kotlin"):
+    mark = CODE_MARK[lang]
+    blocks = [(tag, body.strip()) for tag, body in CODE_BLOCK[lang].findall(text or "")]
+    good = [b for tag, b in blocks if mark in b] or [b for tag, b in blocks if tag]
     if good:
         return max(good, key=len)
-    if "class Tactic" in (text or ""):  # no fences: the whole answer is code
+    if mark in (text or ""):  # no fences: the whole answer is code
         return text.strip()
     return ""
 
@@ -741,17 +764,28 @@ def check_code(code):
     return notes
 
 
+def check_code_py(code):
+    """Quick look before the real audit (SNAKES.py --check, which also runs the timing battery)."""
+    if not code:
+        return ["no se encontró un bloque de código Python en la respuesta"]
+    try:
+        compile(code, "<respuesta>", "exec", dont_inherit=True)
+    except SyntaxError as e:
+        return [f"error de sintaxis en la línea {e.lineno}: {e.msg}"]
+    return [] if re.search(r"def\s+create_agent\s*\(", code) else ["falta def create_agent()"]
+
+
 # ---------------------------------------------------------------------------------------------------------------
 # Sending (only when the user presses Send in the page)
 # ---------------------------------------------------------------------------------------------------------------
-def send_chat(prov, model, prompt, effort, key):
+def send_chat(prov, model, prompt, effort, key, timeout=900):
     base = prov["base"]
     if prov["protocol"] == ANTHROPIC:
         body = {"model": model, "max_tokens": 32000, "messages": [{"role": "user", "content": prompt}]}
         if effort and prov["host"] == "api.anthropic.com":
             body["output_config"] = {"effort": effort}
         headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
-        status, js, raw = http_json(base + "/messages", headers=headers, body=body, timeout=900)
+        status, js, raw = http_json(base + "/messages", headers=headers, body=body, timeout=timeout)
         if status != 200 or not isinstance(js, dict):
             return {"ok": False, "status": status, "error": redact(raw[:3000], key)}
         text = "".join(c.get("text", "") for c in js.get("content") or [] if c.get("type") == "text")
@@ -765,7 +799,7 @@ def send_chat(prov, model, prompt, effort, key):
         else:
             body["reasoning_effort"] = effort
     status, js, raw = http_json(base + "/chat/completions", headers={"Authorization": f"Bearer {key}"}, body=body,
-                                timeout=900)
+                                timeout=timeout)
     if status != 200 or not isinstance(js, dict) or not js.get("choices"):
         return {"ok": False, "status": status, "error": redact(raw[:3000], key)}
     ch = js["choices"][0]
@@ -790,6 +824,211 @@ def list_with_key(prov, key):
         return {"ok": False, "status": status, "error": redact(raw[:1500], key)}
     ids = sorted({str(x.get("id")) for x in items if isinstance(x, dict) and x.get("id")})
     return {"ok": True, "ids": [i for i in ids if not EXCLUDED.search(i)]}
+
+
+# ---------------------------------------------------------------------------------------------------------------
+# Automatic mode: every free model writes its own .kt and .py
+# ---------------------------------------------------------------------------------------------------------------
+# Free offers that are not chat models although their host lists them as text (image and video generators).
+NOT_CHAT = re.compile(r"seedance|seedream|flux|kling|hailuo|\bwan[ -]?2|stable[ -]?diffusion|sdxl|recraft|ideogram|"
+                      r"midjourney|\d{3,4}x\d{3,4}|_\d{3,4}_\d{3,4}", re.I)
+AUTO_SECONDS = 240  # the arena's 4-minute rule, per answer
+RUNS = CACHE / "auto_runs"
+
+
+def file_of(name, lang):
+    return LANGS[lang]["dir"] / f"{name}{LANGS[lang]['ext']}"
+
+
+def chars_of(name, lang):
+    """0 if the file is missing or empty, else its characters."""
+    f = file_of(name, lang)
+    return len(f.read_text(encoding="utf-8", errors="replace")) if f.exists() and f.stat().st_size else 0
+
+
+def free_candidates(trust_unreviewed=False):
+    """One offer per tactic name: the free offers grouped by the name they would play as, the best offer first
+    (a key for it, the lab's own host, a reviewed host, no daily quota)."""
+    groups = {}
+    for p in CATALOG.providers.values():
+        if p["check"] == "unreviewed" and not trust_unreviewed:
+            continue
+        has_key = key_for(p["id"], p)[0] is not None
+        for m in p["models"].values():
+            if not m.get("free") or NOT_CHAT.search(m["id"] + " " + (m.get("name") or "")):
+                continue
+            try:
+                n = CATALOG.names_for(p["id"], m["id"], None, None)
+            except KeyError:
+                continue
+            rank = (not has_key, m.get("lab") != p["id"], p["check"] != "reviewed", bool(m.get("note")))
+            offer = {"name": n["name"], "provider": p["id"], "host": p["host"], "model": m["id"], "hasKey": has_key,
+                     "until": m.get("until"), "note": m.get("note") or "", "rank": rank}
+            key = re.sub(r"[^a-z0-9]", "", n["name"].lower())  # Qwen3.8-27B and Qwen3.8_27B are one entry
+            groups.setdefault(key, []).append(offer)
+    out = []
+    for offers in groups.values():
+        offers.sort(key=lambda o: o["rank"])
+        best = dict(offers[0])
+        # keep the spelling that already has a file, if any
+        named = [o["name"] for o in offers if any(file_of(o["name"], lg).exists() for lg in LANGS)]
+        best["name"] = named[0] if named else best["name"]
+        best["others"] = len(offers) - 1
+        out.append(best)
+    return sorted(out, key=lambda o: o["name"].lower())
+
+
+def arena_check(name, lang, code, workdir):
+    """(passed, report): the arena's own check on a staged copy, so nothing reaches the arena before it passes."""
+    import subprocess
+    if lang == "kotlin":
+        stage = workdir / "kotlin" / "tactics" / f"{name}.kt"
+        stage.parent.mkdir(parents=True, exist_ok=True)
+        stage.write_text(code.rstrip() + "\n", encoding="utf-8", newline="\n")
+        gradlew = ARENA / "kotlin" / ("gradlew.bat" if os.name == "nt" else "gradlew")
+        cmd = [str(gradlew), "-q", "--warning-mode", "all", "run", f"--args=check {stage.as_posix()}"]
+        cwd = ARENA / "kotlin"
+    else:
+        stage = workdir / "tacticas" / f"{name}.py"
+        stage.parent.mkdir(parents=True, exist_ok=True)
+        stage.write_text(code.rstrip() + "\n", encoding="utf-8", newline="\n")
+        engine = workdir / "SNAKES.py"
+        if not engine.exists():
+            engine.write_bytes((ARENA / "SNAKES.py").read_bytes())
+        cmd = [sys.executable, "-I", "-B", str(engine), "--check", str(stage)]
+        cwd = workdir
+    try:
+        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=600, shell=False)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return False, f"no se pudo ejecutar el check: {e}"
+    out = (r.stdout + r.stderr).strip()
+    line = next((x for x in out.splitlines() if x.startswith(("PASS", "FAIL"))), out[-400:])
+    return r.returncode == 0 and line.startswith("PASS"), line
+
+
+def ask(question):
+    try:
+        return input(question).strip().lower() in ("s", "si", "sí", "y", "yes")
+    except EOFError:
+        return False
+
+
+def auto_main(argv):
+    ap = argparse.ArgumentParser(prog="arena_prompter.py auto",
+                                 description="Every free model writes its own Kotlin and Python tactic.")
+    ap.add_argument("--lang", default="kotlin,python", help="kotlin, python or both (default)")
+    ap.add_argument("--only", nargs="*", default=[], help="only names containing these words")
+    ap.add_argument("--limit", type=int, default=0, help="at most this many models")
+    ap.add_argument("--dry-run", action="store_true", help="show the plan; send nothing, write nothing")
+    ap.add_argument("--skip-existing", action="store_true", help="never ask: files with code are left alone")
+    ap.add_argument("--trust-unreviewed", action="store_true", help="also use hosts not in EmuGaMind's pinned list")
+    ap.add_argument("--refresh", action="store_true", help="download every catalog again")
+    args = ap.parse_args(argv)
+    langs = [x for x in (s.strip() for s in args.lang.split(",")) if x]
+    if not langs or any(x not in LANGS for x in langs):
+        sys.exit("--lang: kotlin, python o kotlin,python")
+    sys.stdout.reconfigure(line_buffering=True)
+    print("Catálogo de modelos…")
+    CATALOG.build(refresh=args.refresh, progress=lambda s: print("  ·", s))
+    cands = free_candidates(args.trust_unreviewed)
+    if args.only:
+        cands = [c for c in cands if any(w.lower() in c["name"].lower() for w in args.only)]
+    no_key = [c for c in cands if not c["hasKey"]]
+    cands = [c for c in cands if c["hasKey"]]
+    if args.limit:
+        cands = cands[:args.limit]
+    print(f"\n{len(cands) + len(no_key)} modelos gratuitos; {len(no_key)} sin clave para su host (se omiten), "
+          f"{len(cands)} con clave.")
+    if no_key:
+        hosts = sorted({c['provider'] for c in no_key})
+        print("  Sin clave en D:\\SC\\AK\\A: " + ", ".join(hosts[:30]) + (" …" if len(hosts) > 30 else ""))
+
+    # Plan: what each model will write; files that already have code are decided now, before anything is sent.
+    plan = []
+    for c in cands:
+        todo = []
+        for lang in langs:
+            have = chars_of(c["name"], lang)
+            if have and args.skip_existing:
+                continue
+            if have and not args.dry_run:
+                f = file_of(c["name"], lang)
+                if not ask(f"\nADVERTENCIA: {f.name} ya tiene código ({have} caracteres). ¿Reescribirlo con "
+                           f"{c['model']} vía {c['host']}? [s/N] "):
+                    continue
+            todo.append((lang, have))
+        if todo:
+            plan.append((c, todo))
+    print(f"\nPlan: {len(plan)} modelos, {sum(len(t) for _, t in plan)} archivos.")
+    for c, todo in plan:
+        rewrite = " (tiene código: preguntará)" if args.dry_run else " (reescribe {} car.)"
+        files = ", ".join(f"{c['name']}{LANGS[lg]['ext']}" + (rewrite.format(have) if have else
+                          (" (vacío)" if file_of(c['name'], lg).exists() else " (nuevo)")) for lg, have in todo)
+        extra = f"; hasta {c['until']}" if c["until"] else ""
+        print(f"  {c['model']} @ {c['host']}{extra}{'; ' + c['note'] if c['note'] else ''} -> {files}")
+    if args.dry_run or not plan:
+        return
+
+    stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    run_dir = RUNS / stamp
+    run_dir.mkdir(parents=True, exist_ok=True)
+    results, limited = [], set()
+    for i, (c, todo) in enumerate(plan, 1):
+        prov = CATALOG.providers[c["provider"]]
+        key, _ = key_for(prov["id"], prov)
+        for lang, had in todo:
+            target = file_of(c["name"], lang)
+            rec = {"name": c["name"], "lang": lang, "provider": c["provider"], "model": c["model"]}
+            if c["provider"] in limited:
+                rec.update(status="omitido", detail="el host limitó los pedidos en esta corrida")
+                results.append(rec)
+                continue
+            print(f"[{i}/{len(plan)}] {target.name} <- {c['model']} @ {c['host']} …", end=" ")
+            prompt, _ = build_prompt(c["name"], lang=lang)
+            t0 = time.time()
+            try:
+                out = send_chat(prov, c["model"], prompt, None, key, timeout=AUTO_SECONDS)
+            except (OSError, ValueError) as e:
+                out = {"ok": False, "status": None, "error": redact(f"{type(e).__name__}: {e}", key)}
+            rec["seconds"] = round(time.time() - t0, 1)
+            if not out.get("ok"):
+                if out.get("status") == 429:
+                    limited.add(c["provider"])
+                rec.update(status="error", detail=f"HTTP {out.get('status')}: {out.get('error', '')[:300]}")
+                print(rec["detail"][:120])
+                results.append(rec)
+                continue
+            code = extract_code(out["text"], lang)
+            (run_dir / f"{c['name']}{LANGS[lang]['ext']}.answer.txt").write_text(out["text"], encoding="utf-8")
+            notes = check_code(code) if lang == "kotlin" else check_code_py(code)
+            if notes:
+                rec.update(status="rechazado", detail="; ".join(notes))
+                print("RECHAZADO:", rec["detail"])
+                results.append(rec)
+                continue
+            good, line = arena_check(c["name"], lang, code, run_dir / "stage")
+            rec["check"] = line
+            if not good:
+                rec.update(status="rechazado", detail=line)
+                print("NO PASA el check:", line[:160])
+                results.append(rec)
+                continue
+            if chars_of(c["name"], lang) != had:  # someone changed it while the model was answering
+                rec.update(status="omitido", detail="el archivo cambió durante la corrida; no se tocó")
+                print(rec["detail"])
+                results.append(rec)
+                continue
+            tmp = target.with_name(target.name + ".tmp")
+            tmp.write_text(code.rstrip() + "\n", encoding="utf-8", newline="\n")
+            tmp.replace(target)
+            rec.update(status="escrito", chars=len(code.rstrip()) + 1)
+            print(f"ESCRITO ({rec['chars']} car.) {line[:90]}")
+            results.append(rec)
+    (run_dir / "results.json").write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding="utf-8")
+    count = {}
+    for r in results:
+        count[r["status"]] = count.get(r["status"], 0) + 1
+    print(f"\nResumen: {count}. Respuestas y detalle en {run_dir}")
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -983,6 +1222,8 @@ ROUTES = {"/api/catalog": r_catalog, "/api/names": r_names, "/api/prompt": r_pro
 
 
 def main():
+    if sys.argv[1:2] == ["auto"]:
+        return auto_main(sys.argv[2:])
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no-browser", action="store_true")
