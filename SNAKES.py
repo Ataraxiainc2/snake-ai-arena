@@ -152,8 +152,19 @@ import optuna
 from colorama import Fore, Style, init
 
 init(autoreset=True)
+
+
+def _quiet_ctrl_c(kind, value, tb):
+    """Ctrl+C ends the program with one line, not a traceback: Game.run saves everything on its way out."""
+    if issubclass(kind, KeyboardInterrupt):
+        print("\nStopped with Ctrl+C. Data saved.", flush=True)
+    else:
+        sys.__excepthook__(kind, value, tb)
+
+
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.abspath(__file__)))  # tacticas/, sounds and outputs live next to this file
+    sys.excepthook = _quiet_ctrl_c
 sys.dont_write_bytecode = True  # loading tactics must not leave __pycache__ folders in tacticas/
 torch.set_num_threads(1)  # the DQN nets are tiny: extra threads only compete with the tactics for CPU
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -2775,9 +2786,19 @@ def run_unattended(argv):
             g.hot_reload_tactics()
             system_check()
 
-        game.run(max_seconds=limit, fps_cap=args.fps, save_every=args.save_minutes * 60, on_save=on_save)
+        stopped = False
+        try:
+            game.run(max_seconds=limit, fps_cap=args.fps, save_every=args.save_minutes * 60, on_save=on_save)
+        except KeyboardInterrupt:  # Game.run's finally has already saved telemetry, report and weights
+            stopped = True
         top = sorted(game.snakes, key=lambda s: s.ranking_score(), reverse=True)[:3]
-        print("[UNATTENDED] game %d done: %s" % (round_no, ", ".join(f"{s.nombre} {s.ranking_score():.1f}" for s in top)), flush=True)
+        print("%s[UNATTENDED] game %d %s: %s" % ("\n" if stopped else "", round_no, "stopped" if stopped else "done",
+                                                ", ".join(f"{s.nombre} {s.ranking_score():.1f}" for s in top)),
+              flush=True)
+        if stopped:
+            print("[UNATTENDED] stopped with Ctrl+C after %d turns; telemetry, report and weights saved."
+                  % game.frame_counter, flush=True)
+            return
     INTEGRITY.check()
     print("[UNATTENDED] finished.", flush=True)
 
