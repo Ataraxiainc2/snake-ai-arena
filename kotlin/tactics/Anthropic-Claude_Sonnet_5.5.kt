@@ -22,6 +22,6 @@ val cp=if(tw>1350)1 else if(hu)b.size/2+2 else b.size*3/2+(if(el)150 else 120)
 var r0=-1;var s0=0;var bm=p.validMoves[0]
 for(m in p.validMoves){if(r0>=0&&p.nanosLeft()<=0)break
 val c=nx(hd,m);val f=c in p.foods;gr=g0+(if(f)1 else 0);val r=rm(b,c,cp,p.newMark())
-val s=(if(f)1 shl 20 else 0)-(ds(c,tg)shl 10)-(if(hu)0 else ds(c,tl))-(if(r<1)p.bodies[c]*4000000 else 0)
+val s=(if(f)1 shl 20 else 0)-(ds(c,tg)shl 10)-(if(hu)0 else ds(c,tl))-(if(r<1)p.bodies[c]*4000000 else 0)-(if(el){var z=0;for(e in p.enemies){val u=ds(c,e.body[0]);if(u<3)z+=(3-u)shl 21};z}else 0)
 if(r>r0||r==r0&&s>s0){r0=r;s0=s;bm=m}}
 return bm}}

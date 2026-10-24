@@ -7,7 +7,7 @@ fun ok(c:Int,d:Int):Boolean{val m=o[c];return if(m>bs&&m<=bs+n)d>=n-m+bs+1+gr el
 fun rm(p:Perception,b:IntArray,c:Int,cp:Int):Int{for(i in n-1 downTo 0)o[b[i]]=bs+1+i
 if(!ok(c,1))return 0
 val s=p.newMark();val q=p.queue;o[c]=s;q[0]=c;var k=0;var e=1;var d=1;var r=1
-while(k<r){if(k==e){d++;e=r};val a=q[k++];for(m in 0..3){val x=nx(a,m);if(x>=0&&o[x]!=s&&ok(x,d+1)){o[x]=s;q[r++]=x;if(r>=cp)return cp}}}
+while(k<r){if(k%64==0&&p.nanosLeft()<0)return r;if(k==e){d++;e=r};val a=q[k++];for(m in 0..3){val x=nx(a,m);if(x>=0&&o[x]!=s&&ok(x,d+1)){o[x]=s;q[r++]=x;if(r>=cp)return cp}}}
 return r}
 override fun decide(p:Perception):Int{
 w=p.width;h=p.height;t=p.toroidal;o=p.marks
