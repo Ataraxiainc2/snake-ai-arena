@@ -26,7 +26,7 @@ object Telemetry {
             for (l in s.lives) for ((k, v) in l.turnsToScore) milestones.getOrPut(k) { ArrayList() }.add(v)
             for ((k, v) in s.milestones) milestones.getOrPut(k) { ArrayList() }.add(v)
             llm[s.name] = linkedMapOf(
-                "max" to s.bestScore, "now" to s.score, "foods" to s.foodsEaten,
+                "max" to s.bestScore, "max_game" to s.gameBest, "now" to s.score, "foods" to s.foodsEaten,
                 "deaths" to count(ended.map { it.cause }),
                 "death_score_phase" to count(ended.map { phase(it.score) }),
                 "killed_by" to count(ended.mapNotNull { it.killer }),
@@ -44,7 +44,7 @@ object Telemetry {
         val dqn = a.snakes.filter { it.kind == Kind.DQN }
         val data = linkedMapOf<String, Any?>(
             "readme" to ("Kotlin arena (kotlin/ next to SNAKES.py), same game as SNAKES.py in cells. Layout as telemetry.json: " +
-                "ranking rows = [rank, name, ranking_score, max_score, code_chars, code_factor, type]; llm.<name>: max/now score, " +
+                "ranking rows = [rank, name, ranking_score, max_score, code_chars, code_factor, type]; llm.<name>: max (all games) / max_game (this game) / now score, " +
                 "foods, deaths by cause, death_score_phase, killed_by, ms = decide() time per call (avg, p99, max, " +
                 "over_budget = calls above arena.budget_ms; timeouts = above twice the budget, played at random), median_turns_to " +
                 "10/100/200/300, last_lives rows = [score, cause, killer, turns lived]."),

@@ -17,6 +17,7 @@ private const val USAGE = """Snake Battle Royale AI Arena - Kotlin engine (same 
   phone-telemetry               copy the phone's telemetry (EmuGaMind's Snake game, same format) to
                                 kotlin/telemetry_phone.json with adb (the phone connected by USB, debugging on);
                                 run and view do it by themselves at every save when a phone is connected
+  reset-records                 every best score back to 0 (the ranking starts again); what the DQN learned is kept
   sync                          create an empty kotlin/tactics/<Provider-Model_Name>.kt for every known model that has
                                 none (models.dev, as SNAKES.py does); existing files are never touched. run and view
                                 do it at start unless --no-sync
@@ -27,7 +28,7 @@ fun main(args: Array<String>) {
     val o = Options(args.drop(1))
     val root = arenaRoot()
     if (cmd == "organizer" && args.getOrNull(1) == "init") exitProcess(Organizer.init(root))
-    if (cmd in setOf("run", "view", "check", "bench", "sync", "pack", "phone-telemetry")) {
+    if (cmd in setOf("run", "view", "check", "bench", "sync", "pack", "phone-telemetry", "reset-records")) {
         Organizer.check(root)?.let {
             Launch.start(root, "REFUSED $cmd", args.drop(1), game = false)
             println("[KOTLIN ARENA] not started: $it")
@@ -46,6 +47,11 @@ fun main(args: Array<String>) {
         "bench" -> Bench.run(o, root)
         "pack" -> Bench.pack(root)
         "phone-telemetry" -> PhoneTelemetry.pull(root)
+        "reset-records" -> {
+            val n = arena.engine.Brain.forgetBests(File(root, "kotlin/q_tables_kotlin.bin"))
+            println("[RECORDS] $n best scores back to 0 (the DQN's learning kept): the next game starts the ranking again")
+            0
+        }
         "parity" -> if (o.positional.all { Parity.run(File(it)) }) 0 else 1
         else -> {
             print(USAGE)

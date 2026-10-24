@@ -391,6 +391,7 @@ class Arena(val cfg: ArenaConfig, tactics: List<TacticEntry>, val brain: Brain? 
         s.score++
         if (s.score > s.maxScore) s.maxScore = s.score
         if (s.score > s.episodeBest) s.episodeBest = s.score
+        if (s.score > s.gameBest) s.gameBest = s.score
         s.lifeFoods++
         s.foodsEaten++
         s.turnsWithoutFood = 0

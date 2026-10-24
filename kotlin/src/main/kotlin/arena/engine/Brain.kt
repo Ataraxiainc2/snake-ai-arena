@@ -276,6 +276,30 @@ class Brain(seed: Long, val hidden: Int = 64) {
             }
         }
 
+        /**
+         * `reset-records`: every best score back to 0 (the ranking starts again), the network, epsilon and steps kept.
+         * How many records were reset; 0 without a file.
+         */
+        fun forgetBests(file: File): Int {
+            val old = read(file) ?: return 0
+            val records = old.records.mapValues { (_, r) -> Record(r.epsilon, r.steps, 0) }
+            val tmp = File(file.path + ".tmp")
+            DataOutputStream(tmp.outputStream().buffered()).use { o ->
+                o.writeInt(MAGIC)
+                o.writeInt(if (old.weights != null) old.hidden else 0); o.writeInt(old.episode)
+                old.weights?.forEach { o.writeFloat(it) }
+                o.writeInt(records.size)
+                for ((name, r) in records) {
+                    o.writeUTF(name); o.writeDouble(r.epsilon); o.writeLong(r.steps); o.writeInt(r.best)
+                }
+            }
+            if (!tmp.renameTo(file)) {
+                file.delete()
+                tmp.renameTo(file)
+            }
+            return records.size
+        }
+
         /** Loads the network (if [brain] and the file has one of its size) and, per name, epsilon, steps, best score. */
         fun load(file: File, brain: Brain?, snakes: Array<Snake>): Int? {
             val saved = read(file) ?: return null

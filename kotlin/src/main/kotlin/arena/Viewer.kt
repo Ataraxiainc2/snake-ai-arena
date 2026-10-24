@@ -463,10 +463,19 @@ object Viewer {
         g.fillRect(0, 0, width, height)
         g.font = font.deriveFont(fs * 1.5f)
         val fm = g.fontMetrics
-        val title = "PAUSED  turn ${f.turn}  episode ${f.episode + 1}  ($PAUSE_LEGEND)  P: continue"
+        val title = "PAUSED  turn ${f.turn}  episode ${f.episode + 1}  every snake's standings  P: continue"
         shadowed(g, title, (width - fm.stringWidth(title)) / 2, fs * 2 + fm.ascent, Color.WHITE, 255)
+        g.font = font.deriveFont(fs.toFloat())
+        val lm = g.fontMetrics
+        shadowed(g, PAUSE_LEGEND, (width - lm.stringWidth(PAUSE_LEGEND)) / 2, fs * 2 + fm.height + lm.ascent, Color.WHITE, 200)
         val top = fs * 3 + fm.height * 2
-        table(g, f, Rectangle(0, top, width, height - top - fs * 2), fs * 2, 255, maxRows = Int.MAX_VALUE, detail = true)
+        // the whole game in one line at the bottom: deaths by cause, foods, the best of this game
+        val r = f.ranking
+        val best = r.maxByOrNull { it.game }
+        val sum = "deaths: body ${r.sumOf { it.self }}, wall ${r.sumOf { it.wall }}, rival ${r.sumOf { it.rival }}, " +
+            "hunger ${r.sumOf { it.hunger }}   foods ${r.sumOf { it.foods }}   best this game: ${best?.name} ${best?.game}"
+        shadowed(g, sum, (width - fm.stringWidth(sum)) / 2, height - fs, Color.WHITE, 230)
+        table(g, f, Rectangle(0, top, width, height - top - fs * 2 - fm.height), fs * 2, 255, maxRows = Int.MAX_VALUE, detail = true)
     }
 
     private fun shadowed(g: Graphics2D, t: String, x: Int, y: Int, c: Color, alpha: Int) {
@@ -479,7 +488,8 @@ object Viewer {
     private val ALERT = Color(255, 50, 50)
     private const val ROWS = 4
     private const val PAUSED_REFRESH_MS = 1_000L
-    private const val PAUSE_LEGEND = "ep: best this episode; best, rank: all-time; deaths by cause; avg: score at death; ms per move"
+    private const val PAUSE_LEGEND = "ep: best this episode; best, rank: all-time; deaths by cause; avg: score at death; ms per move; " +
+        "game: best this game; 300+%: lives that reached 300; t300: median turns to 300; killer: who kills it most"
     private const val MIN_FONT = 8
 
     /** IBM Plex Mono Medium (Google Fonts, SIL Open Font License; resources/fonts/OFL.txt): small and legible. */
